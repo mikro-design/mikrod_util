@@ -915,7 +915,11 @@ const BLEScannerScreen = () => {
 
       {/* Filter Controls */}
       {showFilters && (
-        <View style={styles.filters}>
+        <ScrollView
+          style={styles.filtersScrollView}
+          contentContainerStyle={styles.filters}
+          nestedScrollEnabled={true}
+          showsVerticalScrollIndicator={true}>
           {/* RSSI Slider */}
           <View style={styles.rssiSliderContainer}>
             <Text style={styles.rssiLabel}>
@@ -1062,7 +1066,7 @@ const BLEScannerScreen = () => {
               </View>
             </View>
           )}
-        </View>
+        </ScrollView>
       )}
 
       <View style={styles.gatewaySection}>
@@ -1232,12 +1236,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  filters: {
+  filtersScrollView: {
+    maxHeight: 400,
     backgroundColor: 'white',
-    padding: 12,
     marginHorizontal: 12,
     borderRadius: 8,
     marginBottom: 8,
+  },
+  filters: {
+    padding: 12,
   },
   filterRow: {
     flexDirection: 'row',
