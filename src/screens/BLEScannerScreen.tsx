@@ -12,23 +12,30 @@ import {
   Switch,
   RefreshControl,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import KeepAwake from '@sayem314/react-native-keep-awake';
 import BleManager, {
   Peripheral,
 } from 'react-native-ble-manager';
+import { logger } from '../utils/logger';
 
 interface ScannedDevice extends Peripheral {
   rssi: number;
   lastSeen: Date;
+  firstSeen?: Date;
 }
+
+type SortOption = 'rssi' | 'name' | 'firstSeen' | 'lastSeen';
 
 const BLEScannerScreen = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Map<string, ScannedDevice>>(new Map());
   const [nameFilter, setNameFilter] = useState('');
-  const [rssiFilter, setRssiFilter] = useState('-100');
+  const [rssiFilter, setRssiFilter] = useState(-100);
   const [addressFilter, setAddressFilter] = useState('');
   const [showOnlyNamed, setShowOnlyNamed] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('rssi');
+  const [showFilters, setShowFilters] = useState(true);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
@@ -45,10 +52,12 @@ const BLEScannerScreen = () => {
   const handleDiscoverPeripheral = useCallback((peripheral: Peripheral) => {
     setDevices(prevDevices => {
       const newDevices = new Map(prevDevices);
+      const existingDevice = prevDevices.get(peripheral.id);
       const device: ScannedDevice = {
         ...peripheral,
         rssi: peripheral.rssi || -100,
         lastSeen: new Date(),
+        firstSeen: existingDevice?.firstSeen || new Date(),
       };
       newDevices.set(peripheral.id, device);
       return newDevices;
@@ -80,8 +89,9 @@ const BLEScannerScreen = () => {
         }
 
         await BleManager.start({ showAlert: false });
+        logger.success('BLE', 'BLE initialized successfully');
       } catch (error) {
-        console.error('BLE init error:', error);
+        logger.error('BLE', 'BLE initialization failed', { error });
         Alert.alert('Error', 'Failed to initialize BLE');
       }
     };
@@ -153,8 +163,9 @@ const BLEScannerScreen = () => {
       scanningRef.current = true;
       autoRestartRef.current = true; // Enable auto-restart
       await BleManager.scan([], 30, true);
+      logger.info('BLE', 'BLE scan started');
     } catch (error) {
-      console.error('Scan error:', error);
+      logger.error('BLE', 'Failed to start BLE scan', { error });
       setIsScanning(false);
       scanningRef.current = false;
       autoRestartRef.current = false;
@@ -168,8 +179,9 @@ const BLEScannerScreen = () => {
       await BleManager.stopScan();
       setIsScanning(false);
       scanningRef.current = false;
+      logger.info('BLE', 'BLE scan stopped');
     } catch (error) {
-      console.error('Stop scan error:', error);
+      logger.error('BLE', 'Error stopping BLE scan', { error });
       autoRestartRef.current = false;
       setIsScanning(false);
       scanningRef.current = false;
@@ -330,18 +342,18 @@ const BLEScannerScreen = () => {
       await BleManager.connect(deviceId);
       Alert.alert('Connected', `Connected to device ${deviceId}`);
       const peripheralInfo = await BleManager.retrieveServices(deviceId);
+      logger.success('BLE', `Connected to device`, { deviceId });
       console.log('Peripheral info:', peripheralInfo);
     } catch (error) {
-      console.error('Connection error:', error);
+      logger.error('BLE', 'Failed to connect to device', { deviceId, error });
       Alert.alert('Error', 'Failed to connect to device');
     }
   };
 
-  const filterDevices = () => {
-    const rssiThreshold = parseInt(rssiFilter) || -100;
-
-    return Array.from(devices.values()).filter(device => {
-      if (device.rssi < rssiThreshold) return false;
+  const filterAndSortDevices = () => {
+    // Filter
+    let filtered = Array.from(devices.values()).filter(device => {
+      if (device.rssi < rssiFilter) return false;
 
       if (nameFilter && device.name) {
         if (!device.name.toLowerCase().includes(nameFilter.toLowerCase())) {
@@ -361,9 +373,46 @@ const BLEScannerScreen = () => {
 
       return true;
     });
+
+    // Sort
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'rssi':
+          return b.rssi - a.rssi; // Strongest first
+        case 'name':
+          const nameA = (a.name || 'Unknown').toLowerCase();
+          const nameB = (b.name || 'Unknown').toLowerCase();
+          return nameA.localeCompare(nameB);
+        case 'firstSeen':
+          return (a.firstSeen?.getTime() || 0) - (b.firstSeen?.getTime() || 0);
+        case 'lastSeen':
+          return b.lastSeen.getTime() - a.lastSeen.getTime(); // Most recent first
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
   };
 
-  const filteredDevices = filterDevices();
+  const filteredDevices = filterAndSortDevices();
+
+  const getActiveFiltersCount = () => {
+    let count = 0;
+    if (rssiFilter > -100) count++;
+    if (nameFilter) count++;
+    if (addressFilter) count++;
+    if (showOnlyNamed) count++;
+    return count;
+  };
+
+  const clearAllFilters = () => {
+    setRssiFilter(-100);
+    setNameFilter('');
+    setAddressFilter('');
+    setShowOnlyNamed(false);
+    logger.info('BLE', 'All filters cleared');
+  };
 
   const toggleFieldExpansion = (deviceId: string, fieldName: string) => {
     const key = `${deviceId}:${fieldName}`;
@@ -643,7 +692,7 @@ const BLEScannerScreen = () => {
       <View style={styles.header}>
         <Text style={styles.headerText}>BLE Scanner</Text>
         <Text style={styles.statusText}>
-          {isScanning ? 'Scanning...' : `${filteredDevices.length} devices`}
+          {isScanning ? 'Scanning...' : `${filteredDevices.length} / ${devices.size} devices`}
         </Text>
       </View>
 
@@ -667,43 +716,150 @@ const BLEScannerScreen = () => {
         </View>
       </View>
 
-      <View style={styles.filters}>
-        <View style={styles.filterRow}>
-          <TextInput
-            style={styles.filterInput}
-            value={nameFilter}
-            onChangeText={setNameFilter}
-            placeholder="Filter by name"
-            placeholderTextColor="#999"
-          />
-          <TextInput
-            style={[styles.filterInput, {marginLeft: 8}]}
-            value={addressFilter}
-            onChangeText={setAddressFilter}
-            placeholder="Filter by address"
-            placeholderTextColor="#999"
-          />
-        </View>
+      {/* Sort Options */}
+      <View style={styles.sortSection}>
+        <Text style={styles.sortLabel}>Sort by:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll}>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'rssi' && styles.sortButtonActive]}
+            onPress={() => setSortBy('rssi')}>
+            <Text style={[styles.sortButtonText, sortBy === 'rssi' && styles.sortButtonTextActive]}>
+              Signal Strength
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'name' && styles.sortButtonActive]}
+            onPress={() => setSortBy('name')}>
+            <Text style={[styles.sortButtonText, sortBy === 'name' && styles.sortButtonTextActive]}>
+              Name
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'lastSeen' && styles.sortButtonActive]}
+            onPress={() => setSortBy('lastSeen')}>
+            <Text style={[styles.sortButtonText, sortBy === 'lastSeen' && styles.sortButtonTextActive]}>
+              Last Seen
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'firstSeen' && styles.sortButtonActive]}
+            onPress={() => setSortBy('firstSeen')}>
+            <Text style={[styles.sortButtonText, sortBy === 'firstSeen' && styles.sortButtonTextActive]}>
+              First Seen
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
 
-        <View style={styles.filterRow}>
-          <TextInput
-            style={[styles.filterInput, {flex: 0.5}]}
-            value={rssiFilter}
-            onChangeText={setRssiFilter}
-            keyboardType="numeric"
-            placeholder="Min RSSI"
-            placeholderTextColor="#999"
-          />
-          <View style={styles.switchContainer}>
-            <Text style={styles.switchLabel}>Named only</Text>
-            <Switch
-              value={showOnlyNamed}
-              onValueChange={setShowOnlyNamed}
-              trackColor={{false: '#767577', true: '#007AFF'}}
+      {/* Filter Section Header */}
+      <TouchableOpacity
+        style={styles.filterHeader}
+        onPress={() => setShowFilters(!showFilters)}>
+        <Text style={styles.filterHeaderText}>
+          {showFilters ? '▼' : '▶'} Filters {getActiveFiltersCount() > 0 ? `(${getActiveFiltersCount()})` : ''}
+        </Text>
+        {getActiveFiltersCount() > 0 && (
+          <TouchableOpacity onPress={clearAllFilters} style={styles.clearFiltersButton}>
+            <Text style={styles.clearFiltersText}>Clear All</Text>
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+
+      {/* Active Filter Chips */}
+      {getActiveFiltersCount() > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChipsContainer}>
+          {rssiFilter > -100 && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>RSSI ≥ {rssiFilter} dBm</Text>
+              <TouchableOpacity onPress={() => setRssiFilter(-100)} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {nameFilter !== '' && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>Name: {nameFilter}</Text>
+              <TouchableOpacity onPress={() => setNameFilter('')} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {addressFilter !== '' && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>Address: {addressFilter}</Text>
+              <TouchableOpacity onPress={() => setAddressFilter('')} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {showOnlyNamed && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>Named only</Text>
+              <TouchableOpacity onPress={() => setShowOnlyNamed(false)} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      )}
+
+      {/* Filter Controls */}
+      {showFilters && (
+        <View style={styles.filters}>
+          {/* RSSI Slider */}
+          <View style={styles.rssiSliderContainer}>
+            <Text style={styles.rssiLabel}>
+              Min RSSI: {rssiFilter} dBm {rssiFilter > -100 && `(${Math.abs(rssiFilter - 0)} units)`}
+            </Text>
+            <Slider
+              style={styles.rssiSlider}
+              minimumValue={-100}
+              maximumValue={-30}
+              step={5}
+              value={rssiFilter}
+              onValueChange={setRssiFilter}
+              minimumTrackTintColor="#007AFF"
+              maximumTrackTintColor="#E5E5EA"
+              thumbTintColor="#007AFF"
+            />
+            <View style={styles.rssiLabels}>
+              <Text style={styles.rssiLabelSmall}>-100 (Far)</Text>
+              <Text style={styles.rssiLabelSmall}>-65 (Medium)</Text>
+              <Text style={styles.rssiLabelSmall}>-30 (Near)</Text>
+            </View>
+          </View>
+
+          {/* Text Filters */}
+          <View style={styles.filterRow}>
+            <TextInput
+              style={styles.filterInput}
+              value={nameFilter}
+              onChangeText={setNameFilter}
+              placeholder="Filter by name"
+              placeholderTextColor="#999"
+            />
+            <TextInput
+              style={[styles.filterInput, {marginLeft: 8}]}
+              value={addressFilter}
+              onChangeText={setAddressFilter}
+              placeholder="Filter by address"
+              placeholderTextColor="#999"
             />
           </View>
+
+          {/* Named Only Switch */}
+          <View style={styles.switchRow}>
+            <View style={styles.switchContainer}>
+              <Text style={styles.switchLabel}>Show named devices only</Text>
+              <Switch
+                value={showOnlyNamed}
+                onValueChange={setShowOnlyNamed}
+                trackColor={{false: '#767577', true: '#007AFF'}}
+              />
+            </View>
+          </View>
         </View>
-      </View>
+      )}
 
       <View style={styles.gatewaySection}>
         <View style={styles.gatewaySectionHeader}>
@@ -892,15 +1048,143 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#000',
   },
+  switchRow: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
   switchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 12,
+    flex: 1,
   },
   switchLabel: {
     fontSize: 14,
     color: '#000',
     marginRight: 8,
+    flex: 1,
+  },
+  sortSection: {
+    backgroundColor: 'white',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  sortLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 8,
+  },
+  sortScroll: {
+    flexDirection: 'row',
+  },
+  sortButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginRight: 8,
+    borderRadius: 16,
+    backgroundColor: '#F2F2F7',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  sortButtonActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  sortButtonText: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
+  },
+  sortButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  filterHeader: {
+    backgroundColor: 'white',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  filterHeaderText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
+  },
+  clearFiltersButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+  },
+  clearFiltersText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '600',
+  },
+  filterChipsContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 4,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007AFF',
+    paddingVertical: 6,
+    paddingLeft: 12,
+    paddingRight: 8,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  filterChipText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '500',
+    marginRight: 4,
+  },
+  filterChipClose: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterChipCloseText: {
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  rssiSliderContainer: {
+    marginBottom: 12,
+  },
+  rssiLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 8,
+  },
+  rssiSlider: {
+    width: '100%',
+    height: 40,
+  },
+  rssiLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: -8,
+  },
+  rssiLabelSmall: {
+    fontSize: 11,
+    color: '#8E8E93',
   },
   gatewaySection: {
     backgroundColor: 'white',
