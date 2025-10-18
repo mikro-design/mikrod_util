@@ -7,6 +7,7 @@ import { Text } from 'react-native';
 import NFCReaderScreen from './src/screens/NFCReaderScreen';
 import BLEScannerScreen from './src/screens/BLEScannerScreen';
 import NFCTagDetailScreen from './src/screens/NFCTagDetailScreen';
+import { LogsScreen } from './src/screens/LogsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -62,6 +63,18 @@ function App() {
               ),
               headerShown: true,
               headerTitle: 'Mikrod Util - BLE Scanner',
+            }}
+          />
+          <Tab.Screen
+            name="Logs"
+            component={LogsScreen}
+            options={{
+              tabBarLabel: 'Logs',
+              tabBarIcon: ({ color, size }) => (
+                <Text style={{ fontSize: size, color }}>📋</Text>
+              ),
+              headerShown: true,
+              headerTitle: 'Mikrod Util - Logs',
             }}
           />
         </Tab.Navigator>

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Alert, PermissionsAndroid, Platform } from 'react-native';
 import BleManager, { Peripheral } from 'react-native-ble-manager';
 import { ScannedDevice } from '../types';
+import { logger } from '../utils/logger';
 
 export const useBLE = () => {
   const [isScanning, setIsScanning] = useState(false);
@@ -48,8 +49,9 @@ export const useBLE = () => {
         }
 
         await BleManager.start({ showAlert: false });
+        logger.success('BLE', 'BLE initialized successfully');
       } catch (error) {
-        console.error('BLE init error:', error);
+        logger.error('BLE', 'BLE initialization failed', { error });
         Alert.alert('Error', 'Failed to initialize BLE');
       }
     };
@@ -121,8 +123,9 @@ export const useBLE = () => {
       scanningRef.current = true;
       autoRestartRef.current = true;
       await BleManager.scan([], 30, true);
+      logger.info('BLE', 'BLE scan started');
     } catch (error) {
-      console.error('Scan error:', error);
+      logger.error('BLE', 'Failed to start BLE scan', { error });
       setIsScanning(false);
       scanningRef.current = false;
       autoRestartRef.current = false;
@@ -136,8 +139,9 @@ export const useBLE = () => {
       await BleManager.stopScan();
       setIsScanning(false);
       scanningRef.current = false;
+      logger.info('BLE', 'BLE scan stopped');
     } catch (error) {
-      console.error('Stop scan error:', error);
+      logger.error('BLE', 'Error stopping BLE scan', { error });
       autoRestartRef.current = false;
       setIsScanning(false);
       scanningRef.current = false;
@@ -153,10 +157,10 @@ export const useBLE = () => {
       await BleManager.connect(deviceId);
       Alert.alert('Connected', `Connected to device ${deviceId}`);
       const peripheralInfo = await BleManager.retrieveServices(deviceId);
-      console.log('Peripheral info:', peripheralInfo);
+      logger.success('BLE', `Connected to device`, { deviceId });
       return peripheralInfo;
     } catch (error) {
-      console.error('Connection error:', error);
+      logger.error('BLE', 'Failed to connect to device', { deviceId, error });
       Alert.alert('Error', 'Failed to connect to device');
       throw error;
     }
