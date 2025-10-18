@@ -27,6 +27,13 @@ interface ScannedDevice extends Peripheral {
 
 type SortOption = 'rssi' | 'name' | 'firstSeen' | 'lastSeen';
 
+interface ByteFilter {
+  id: string;
+  position: string;
+  value: string;
+  enabled: boolean;
+}
+
 const BLEScannerScreen = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Map<string, ScannedDevice>>(new Map());
@@ -36,6 +43,13 @@ const BLEScannerScreen = () => {
   const [showOnlyNamed, setShowOnlyNamed] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('rssi');
   const [showFilters, setShowFilters] = useState(true);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // Advanced filters
+  const [serviceUuidFilter, setServiceUuidFilter] = useState('');
+  const [companyIdFilter, setCompanyIdFilter] = useState('');
+  const [mfgByteFilters, setMfgByteFilters] = useState<ByteFilter[]>([]);
+
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
@@ -350,9 +364,39 @@ const BLEScannerScreen = () => {
     }
   };
 
+  const addByteFilter = () => {
+    const newFilter: ByteFilter = {
+      id: `byte-${Date.now()}`,
+      position: '0',
+      value: '',
+      enabled: true,
+    };
+    setMfgByteFilters([...mfgByteFilters, newFilter]);
+  };
+
+  const removeByteFilter = (id: string) => {
+    setMfgByteFilters(mfgByteFilters.filter(f => f.id !== id));
+  };
+
+  const updateByteFilter = (id: string, field: keyof ByteFilter, value: any) => {
+    setMfgByteFilters(mfgByteFilters.map(f =>
+      f.id === id ? { ...f, [field]: value } : f
+    ));
+  };
+
+  const getManufacturerDataBytes = (device: ScannedDevice): number[] => {
+    if (!device.advertising?.manufacturerData) return [];
+    const mfgData = device.advertising.manufacturerData;
+    if (Array.isArray(mfgData)) return mfgData;
+    if (mfgData.bytes) return Array.from(mfgData.bytes as number[]);
+    if (mfgData.data) return Array.from(mfgData.data as number[]);
+    return [];
+  };
+
   const filterAndSortDevices = () => {
     // Filter
     let filtered = Array.from(devices.values()).filter(device => {
+      // Basic filters
       if (device.rssi < rssiFilter) return false;
 
       if (nameFilter && device.name) {
@@ -369,6 +413,42 @@ const BLEScannerScreen = () => {
 
       if (showOnlyNamed && !device.name) {
         return false;
+      }
+
+      // Advanced filters
+      if (serviceUuidFilter && device.advertising?.serviceUUIDs) {
+        const filterUuids = serviceUuidFilter.toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+        const hasMatch = filterUuids.some(filterUuid =>
+          device.advertising!.serviceUUIDs!.some(deviceUuid =>
+            deviceUuid.toLowerCase().includes(filterUuid)
+          )
+        );
+        if (!hasMatch) return false;
+      }
+
+      // Company ID filter
+      if (companyIdFilter && device.advertising?.manufacturerData) {
+        const bytes = getManufacturerDataBytes(device);
+        if (bytes.length < 2) return false;
+        const companyId = bytes[0] | (bytes[1] << 8);
+        const filterCompanyId = parseInt(companyIdFilter.replace(/^0x/i, ''), 16);
+        if (isNaN(filterCompanyId) || companyId !== filterCompanyId) return false;
+      }
+
+      // Manufacturer data byte filters (AND logic)
+      const activeByteFilters = mfgByteFilters.filter(f => f.enabled && f.position && f.value);
+      if (activeByteFilters.length > 0) {
+        if (!device.advertising?.manufacturerData) return false;
+        const bytes = getManufacturerDataBytes(device);
+
+        for (const filter of activeByteFilters) {
+          const pos = parseInt(filter.position);
+          const expectedValue = parseInt(filter.value.replace(/^0x/i, ''), 16);
+
+          if (isNaN(pos) || isNaN(expectedValue)) continue;
+          if (pos < 0 || pos >= bytes.length) return false;
+          if (bytes[pos] !== expectedValue) return false;
+        }
       }
 
       return true;
@@ -403,6 +483,9 @@ const BLEScannerScreen = () => {
     if (nameFilter) count++;
     if (addressFilter) count++;
     if (showOnlyNamed) count++;
+    if (serviceUuidFilter) count++;
+    if (companyIdFilter) count++;
+    count += mfgByteFilters.filter(f => f.enabled && f.position && f.value).length;
     return count;
   };
 
@@ -411,6 +494,9 @@ const BLEScannerScreen = () => {
     setNameFilter('');
     setAddressFilter('');
     setShowOnlyNamed(false);
+    setServiceUuidFilter('');
+    setCompanyIdFilter('');
+    setMfgByteFilters([]);
     logger.info('BLE', 'All filters cleared');
   };
 
@@ -786,7 +872,7 @@ const BLEScannerScreen = () => {
           )}
           {addressFilter !== '' && (
             <View style={styles.filterChip}>
-              <Text style={styles.filterChipText}>Address: {addressFilter}</Text>
+              <Text style={styles.filterChipText}>Addr: {addressFilter}</Text>
               <TouchableOpacity onPress={() => setAddressFilter('')} style={styles.filterChipClose}>
                 <Text style={styles.filterChipCloseText}>×</Text>
               </TouchableOpacity>
@@ -800,6 +886,30 @@ const BLEScannerScreen = () => {
               </TouchableOpacity>
             </View>
           )}
+          {serviceUuidFilter && (
+            <View style={[styles.filterChip, styles.filterChipAdvanced]}>
+              <Text style={styles.filterChipText}>UUID: {serviceUuidFilter}</Text>
+              <TouchableOpacity onPress={() => setServiceUuidFilter('')} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {companyIdFilter && (
+            <View style={[styles.filterChip, styles.filterChipAdvanced]}>
+              <Text style={styles.filterChipText}>Company: {companyIdFilter}</Text>
+              <TouchableOpacity onPress={() => setCompanyIdFilter('')} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {mfgByteFilters.filter(f => f.enabled && f.position && f.value).map(filter => (
+            <View key={filter.id} style={[styles.filterChip, styles.filterChipAdvanced]}>
+              <Text style={styles.filterChipText}>byte[{filter.position}]=={filter.value}</Text>
+              <TouchableOpacity onPress={() => removeByteFilter(filter.id)} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
         </ScrollView>
       )}
 
@@ -858,6 +968,100 @@ const BLEScannerScreen = () => {
               />
             </View>
           </View>
+
+          {/* Advanced Filters Toggle */}
+          <TouchableOpacity
+            style={styles.advancedToggle}
+            onPress={() => setShowAdvancedFilters(!showAdvancedFilters)}>
+            <Text style={styles.advancedToggleText}>
+              {showAdvancedFilters ? '▼' : '▶'} Advanced Payload Filtering
+            </Text>
+          </TouchableOpacity>
+
+          {/* Advanced Filters Section */}
+          {showAdvancedFilters && (
+            <View style={styles.advancedFiltersSection}>
+              {/* Service UUID Filter */}
+              <View style={styles.advancedFilterGroup}>
+                <Text style={styles.advancedFilterLabel}>Service UUID(s)</Text>
+                <Text style={styles.advancedFilterHint}>Comma-separated UUIDs</Text>
+                <TextInput
+                  style={styles.advancedFilterInput}
+                  value={serviceUuidFilter}
+                  onChangeText={setServiceUuidFilter}
+                  placeholder="e.g. 180F, 180A"
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Company ID Filter */}
+              <View style={styles.advancedFilterGroup}>
+                <Text style={styles.advancedFilterLabel}>Manufacturer Company ID</Text>
+                <Text style={styles.advancedFilterHint}>Hex value (e.g. 0x004C for Apple)</Text>
+                <TextInput
+                  style={styles.advancedFilterInput}
+                  value={companyIdFilter}
+                  onChangeText={setCompanyIdFilter}
+                  placeholder="0x004C"
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Manufacturer Data Byte Filters */}
+              <View style={styles.advancedFilterGroup}>
+                <View style={styles.byteFilterHeader}>
+                  <Text style={styles.advancedFilterLabel}>Manufacturer Data Byte Filters</Text>
+                  <TouchableOpacity onPress={addByteFilter} style={styles.addByteFilterButton}>
+                    <Text style={styles.addByteFilterText}>+ Add Rule</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.advancedFilterHint}>All rules must match (AND logic)</Text>
+
+                {mfgByteFilters.map((filter, index) => (
+                  <View key={filter.id} style={styles.byteFilterRow}>
+                    <Text style={styles.byteFilterIndex}>#{index + 1}</Text>
+                    <View style={styles.byteFilterInputs}>
+                      <TextInput
+                        style={[styles.byteFilterInput, styles.byteFilterPosition]}
+                        value={filter.position}
+                        onChangeText={(val) => updateByteFilter(filter.id, 'position', val)}
+                        placeholder="Pos"
+                        placeholderTextColor="#999"
+                        keyboardType="numeric"
+                      />
+                      <Text style={styles.byteFilterEqual}>==</Text>
+                      <TextInput
+                        style={[styles.byteFilterInput, styles.byteFilterValue]}
+                        value={filter.value}
+                        onChangeText={(val) => updateByteFilter(filter.id, 'value', val)}
+                        placeholder="0x00"
+                        placeholderTextColor="#999"
+                        autoCapitalize="none"
+                      />
+                    </View>
+                    <Switch
+                      value={filter.enabled}
+                      onValueChange={(val) => updateByteFilter(filter.id, 'enabled', val)}
+                      trackColor={{false: '#767577', true: '#34C759'}}
+                    />
+                    <TouchableOpacity
+                      onPress={() => removeByteFilter(filter.id)}
+                      style={styles.removeByteFilterButton}>
+                      <Text style={styles.removeByteFilterText}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                {mfgByteFilters.length === 0 && (
+                  <Text style={styles.noByteFiltersText}>
+                    No byte filters. Tap "+ Add Rule" to create one.
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
         </View>
       )}
 
@@ -1164,6 +1368,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 18,
   },
+  filterChipAdvanced: {
+    backgroundColor: '#FF9500',
+  },
   rssiSliderContainer: {
     marginBottom: 12,
   },
@@ -1185,6 +1392,129 @@ const styles = StyleSheet.create({
   rssiLabelSmall: {
     fontSize: 11,
     color: '#8E8E93',
+  },
+  advancedToggle: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+  },
+  advancedToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF9500',
+  },
+  advancedFiltersSection: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+  },
+  advancedFilterGroup: {
+    marginBottom: 16,
+  },
+  advancedFilterLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 4,
+  },
+  advancedFilterHint: {
+    fontSize: 11,
+    color: '#8E8E93',
+    marginBottom: 6,
+  },
+  advancedFilterInput: {
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    borderRadius: 6,
+    padding: 8,
+    fontSize: 14,
+    color: '#000',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  byteFilterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  addByteFilterButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#34C759',
+    borderRadius: 12,
+  },
+  addByteFilterText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '600',
+  },
+  byteFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 6,
+  },
+  byteFilterIndex: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    width: 30,
+  },
+  byteFilterInputs: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  byteFilterInput: {
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    borderRadius: 4,
+    padding: 6,
+    fontSize: 13,
+    color: '#000',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    backgroundColor: 'white',
+  },
+  byteFilterPosition: {
+    width: 50,
+    textAlign: 'center',
+  },
+  byteFilterValue: {
+    flex: 1,
+  },
+  byteFilterEqual: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginHorizontal: 6,
+  },
+  removeByteFilterButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  removeByteFilterText: {
+    fontSize: 18,
+    color: 'white',
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  noByteFiltersText: {
+    fontSize: 12,
+    color: '#8E8E93',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
   },
   gatewaySection: {
     backgroundColor: 'white',
