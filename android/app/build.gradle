@@ -77,9 +77,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.st25dvreader"
+    namespace "com.mikrodutil"
     defaultConfig {
-        applicationId "com.st25dvreader"
+        applicationId "com.mikrodutil"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -98,8 +98,13 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
+            // WARNING: This release build is using DEBUG signing configuration!
+            // Before publishing to production, you MUST generate your own keystore file.
+            // See: https://reactnative.dev/docs/signed-apk-android
+            // TODO: Replace with proper release signing configuration:
+            // 1. Generate keystore: keytool -genkeypair -v -storetype PKCS12 -keystore my-release-key.keystore ...
+            // 2. Add to gradle.properties: MYAPP_RELEASE_STORE_FILE, MYAPP_RELEASE_KEY_ALIAS, etc.
+            // 3. Update this config to use release signing instead of debug
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

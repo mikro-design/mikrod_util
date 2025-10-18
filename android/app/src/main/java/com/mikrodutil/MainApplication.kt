@@ -1,4 +1,4 @@
-package com.st25dvreader
+package com.mikrodutil
 
 import android.app.Application
 import com.facebook.react.PackageList
