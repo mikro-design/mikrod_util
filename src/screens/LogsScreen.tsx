@@ -8,6 +8,7 @@ import {
   Share,
   ScrollView,
 } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { logger, LogEntry, LogLevel } from '../utils/logger';
 
 export const LogsScreen = () => {
@@ -16,6 +17,7 @@ export const LogsScreen = () => {
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'NFC' | 'BLE' | 'SYSTEM'>('ALL');
   const [showDebug, setShowDebug] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [phoneIp, setPhoneIp] = useState<string>('...');
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -32,6 +34,14 @@ export const LogsScreen = () => {
 
     return unsubscribe;
   }, [autoScroll]);
+
+  useEffect(() => {
+    // Fetch phone IP
+    NetInfo.fetch().then(state => {
+      const ip = state.details?.ipAddress || 'Unknown';
+      setPhoneIp(ip);
+    });
+  }, []);
 
   const getFilteredLogs = () => {
     let filtered = logs;
@@ -108,13 +118,11 @@ export const LogsScreen = () => {
   };
 
   const formatTime = (date: Date): string => {
-    return date.toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      fractionalSecondDigits: 3,
-    });
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const ms = date.getMilliseconds().toString().padStart(3, '0');
+    return `${hours}:${minutes}:${seconds}.${ms}`;
   };
 
   const renderLogEntry = ({ item }: { item: LogEntry }) => (
@@ -192,24 +200,28 @@ export const LogsScreen = () => {
 
       {/* Action Bar */}
       <View style={styles.actionBar}>
+        <Text style={styles.phoneIpText}>
+          IP: {phoneIp}
+        </Text>
+
         <TouchableOpacity
           style={[styles.actionButton, autoScroll && styles.actionButtonActive]}
           onPress={() => setAutoScroll(!autoScroll)}>
           <Text style={styles.actionButtonText}>
-            {autoScroll ? '📌' : '📌'} Auto-scroll
+            {autoScroll ? '📌' : '📌'}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionButton} onPress={handleShareLogs}>
-          <Text style={styles.actionButtonText}>📤 Share</Text>
+          <Text style={styles.actionButtonText}>📤</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionButton} onPress={handleClearLogs}>
-          <Text style={styles.actionButtonText}>🗑️ Clear</Text>
+          <Text style={styles.actionButtonText}>🗑️</Text>
         </TouchableOpacity>
 
         <Text style={styles.logCount}>
-          {filteredLogs.length} / {logs.length} logs
+          {filteredLogs.length} / {logs.length}
         </Text>
       </View>
 
@@ -293,8 +305,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#333',
   },
+  phoneIpText: {
+    fontSize: 11,
+    color: '#666',
+    fontFamily: 'monospace',
+    marginRight: 'auto',
+  },
   logCount: {
-    marginLeft: 'auto',
     fontSize: 12,
     color: '#999',
   },

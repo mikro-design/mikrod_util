@@ -17,7 +17,24 @@ import KeepAwake from '@sayem314/react-native-keep-awake';
 import BleManager, {
   Peripheral,
 } from 'react-native-ble-manager';
+import NetInfo from '@react-native-community/netinfo';
 import { logger } from '../utils/logger';
+import init from 'react_native_mqtt';
+import { IMqttClient } from 'react_native_mqtt';
+import { Camera } from 'react-native-camera-kit';
+
+// Declare Paho global from react_native_mqtt
+declare const Paho: any;
+
+interface MQTTConfig {
+  broker: string;
+  port: number;
+  topic: string;
+  username?: string;
+  password?: string;
+  tls?: boolean;
+  connection_id?: string;
+}
 
 interface ScannedDevice extends Peripheral {
   rssi: number;
@@ -25,7 +42,7 @@ interface ScannedDevice extends Peripheral {
   firstSeen?: Date;
 }
 
-type SortOption = 'rssi' | 'name' | 'firstSeen' | 'lastSeen';
+type SortOption = 'rssi' | 'name' | 'firstSeen' | 'lastSeen' | 'insertion';
 
 interface ByteFilter {
   id: string;
@@ -34,6 +51,72 @@ interface ByteFilter {
   enabled: boolean;
 }
 
+interface FilterPreset {
+  name: string;
+  icon: string;
+  description: string;
+  companyId?: string;
+  serviceUuid?: string;
+  bytePattern?: string; // Hex pattern with xx for wildcards (e.g., "aabbxxcc")
+  byteFilters?: Array<{position: string; value: string}>; // Legacy, kept for reference
+}
+
+const FILTER_PRESETS: FilterPreset[] = [
+  {
+    name: 'iBeacon',
+    icon: '📍',
+    description: 'Apple iBeacon standard',
+    companyId: '0x004C',
+    byteFilters: [{position: '7', value: '0x02'}, {position: '8', value: '0x15'}],
+  },
+  {
+    name: 'Sterisol',
+    icon: '🏥',
+    description: 'Sterisol iBeacon',
+    companyId: '0x004F',
+    byteFilters: [{position: '7', value: '0x02'}, {position: '8', value: '0x15'}],
+  },
+  {
+    name: 'Eddystone',
+    icon: '🔵',
+    description: 'Google Eddystone beacon',
+    serviceUuid: 'FEAA',
+  },
+  {
+    name: 'AirTag',
+    icon: '🔖',
+    description: 'Apple AirTag / FindMy',
+    companyId: '0x004C',
+    byteFilters: [{position: '7', value: '0x12'}],
+  },
+  {
+    name: 'FindMy',
+    icon: '📡',
+    description: 'Apple FindMy network',
+    companyId: '0x004C',
+    byteFilters: [{position: '7', value: '0x10'}],
+  },
+  {
+    name: 'AirPods',
+    icon: '🎧',
+    description: 'Apple AirPods',
+    companyId: '0x004C',
+    byteFilters: [{position: '7', value: '0x07'}],
+  },
+  {
+    name: 'Fast Pair',
+    icon: '⚡',
+    description: 'Android Fast Pair',
+    serviceUuid: 'FE2C',
+  },
+  {
+    name: 'Exposure',
+    icon: '🦠',
+    description: 'COVID Exposure Notification',
+    serviceUuid: 'FD6F',
+  },
+];
+
 const BLEScannerScreen = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Map<string, ScannedDevice>>(new Map());
@@ -41,27 +124,37 @@ const BLEScannerScreen = () => {
   const [rssiFilter, setRssiFilter] = useState(-100);
   const [addressFilter, setAddressFilter] = useState('');
   const [showOnlyNamed, setShowOnlyNamed] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>('rssi');
+  const [sortBy, setSortBy] = useState<SortOption>('insertion');
   const [showFilters, setShowFilters] = useState(true);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   // Advanced filters
   const [serviceUuidFilter, setServiceUuidFilter] = useState('');
   const [companyIdFilter, setCompanyIdFilter] = useState('');
-  const [mfgByteFilters, setMfgByteFilters] = useState<ByteFilter[]>([]);
+  const [rawBytePattern, setRawBytePattern] = useState('');
 
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
+  const [favoriteDevices, setFavoriteDevices] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [gatewayEnabled, setGatewayEnabled] = useState(false);
-  const [gatewayUrl, setGatewayUrl] = useState('http://192.168.1.100:8080/api/ble');
+  const [mqttTopic, setMqttTopic] = useState('');
+  const [mqttBroker, setMqttBroker] = useState('');
+  const [mqttPort, setMqttPort] = useState(1883);
+  const [mqttUsername, setMqttUsername] = useState('');
+  const [mqttPassword, setMqttPassword] = useState('');
+  const [mqttTls, setMqttTls] = useState(false);
+  const [mqttConfig, setMqttConfig] = useState<MQTTConfig | null>(null);
+  const [showQRScanner, setShowQRScanner] = useState(false);
   const [gatewayInterval, setGatewayInterval] = useState('10');
   const [lastGatewayPost, setLastGatewayPost] = useState<Date | null>(null);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [nextPostIn, setNextPostIn] = useState<number | null>(null);
+  const [mqttConnected, setMqttConnected] = useState(false);
   const scanningRef = useRef(false);
   const autoRestartRef = useRef(false);
   const gatewayIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const mqttClientRef = useRef<IMqttClient | null>(null);
 
   const handleDiscoverPeripheral = useCallback((peripheral: Peripheral) => {
     setDevices(prevDevices => {
@@ -77,6 +170,145 @@ const BLEScannerScreen = () => {
       return newDevices;
     });
   }, []);
+
+
+  // Handle QR code scan
+  const handleQRCodeScan = useCallback((event: any) => {
+    try {
+      // react-native-camera-kit provides the code in event.nativeEvent.codeStringValue
+      const qrData = event?.nativeEvent?.codeStringValue || event;
+      const config: MQTTConfig = JSON.parse(qrData);
+
+      // Validate required fields
+      if (!config.broker || !config.port || !config.topic) {
+        Alert.alert('Invalid QR Code', 'QR code missing required fields: broker, port, topic');
+        logger.error('QR', 'Invalid QR code - missing required fields');
+        return;
+      }
+
+      // Apply configuration
+      setMqttConfig(config);
+      setMqttBroker(config.broker);
+      setMqttPort(config.port);
+      setMqttTopic(config.topic);
+      setMqttUsername(config.username || '');
+      setMqttPassword(config.password || '');
+      setMqttTls(config.tls || false);
+
+      setShowQRScanner(false);
+
+      logger.success('QR', `Configuration loaded: ${config.broker}:${config.port}/${config.topic}`);
+      Alert.alert(
+        'Configuration Loaded',
+        `Broker: ${config.broker}\nPort: ${config.port}\nTopic: ${config.topic}${config.connection_id ? `\nID: ${config.connection_id}` : ''}`
+      );
+    } catch (error) {
+      Alert.alert('Invalid QR Code', 'QR code does not contain valid JSON configuration');
+      logger.error('QR', `Invalid QR code JSON: ${error}`);
+    }
+  }, []);
+
+  // Request camera permission
+  const requestCameraPermission = async () => {
+    try {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          {
+            title: 'Camera Permission',
+            message: 'This app needs camera access to scan QR codes',
+            buttonPositive: 'OK',
+          }
+        );
+        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+          setShowQRScanner(true);
+          logger.info('QR', 'Camera permission granted');
+        } else {
+          Alert.alert('Permission Denied', 'Camera permission is required to scan QR codes');
+          logger.error('QR', 'Camera permission denied');
+        }
+      } else {
+        setShowQRScanner(true);
+      }
+    } catch (error) {
+      logger.error('QR', `Camera permission error: ${error}`);
+      Alert.alert('Error', 'Failed to request camera permission');
+    }
+  };
+
+  // MQTT connection management - only connect after QR code scan
+  useEffect(() => {
+    // Only connect if gateway is enabled AND we have a valid config from QR scan
+    if (gatewayEnabled && mqttConfig && mqttBroker && mqttTopic) {
+      // Initialize MQTT
+      init({
+        size: 10000,
+        storageBackend: undefined,
+        defaultExpires: 1000 * 3600 * 24,
+        enableCache: true,
+        sync: {},
+      });
+
+      logger.info('MQTT', `Connecting to ${mqttBroker}:${mqttPort}`);
+
+      const clientId = `ble_scanner_${Date.now()}`;
+      const client = new Paho.MQTT.Client(mqttBroker, mqttPort, clientId) as unknown as IMqttClient;
+
+      client.onConnectionLost = (responseObject: any) => {
+        setMqttConnected(false);
+        setGatewayError('MQTT disconnected');
+        logger.error('MQTT', `Connection lost: ${responseObject.errorMessage}`);
+      };
+
+      client.onMessageArrived = (message: any) => {
+        // We're only publishing, not subscribing
+        logger.debug('MQTT', `Unexpected message: ${message.payloadString}`);
+      };
+
+      const connectOptions: any = {
+        onSuccess: () => {
+          setMqttConnected(true);
+          setGatewayError(null);
+          mqttClientRef.current = client;
+          logger.success('MQTT', `Connected to ${mqttBroker}:${mqttPort}`);
+        },
+        onFailure: (error: any) => {
+          setMqttConnected(false);
+          setGatewayError(`MQTT failed: ${error.errorMessage || 'Unknown error'}`);
+          logger.error('MQTT', `Connection failed: ${error.errorMessage || 'Unknown'}`);
+        },
+        timeout: 10,
+        keepAliveInterval: 60,
+        useSSL: mqttTls,
+        cleanSession: true,
+      };
+
+      // Add authentication if provided
+      if (mqttUsername) {
+        connectOptions.userName = mqttUsername;
+        if (mqttPassword) {
+          connectOptions.password = mqttPassword;
+        }
+        logger.info('MQTT', `Using authentication for user: ${mqttUsername}`);
+      }
+
+      client.connect(connectOptions);
+
+      return () => {
+        if (mqttClientRef.current?.isConnected()) {
+          mqttClientRef.current.disconnect();
+          logger.info('MQTT', 'Disconnected');
+        }
+        mqttClientRef.current = null;
+        setMqttConnected(false);
+      };
+    } else if (gatewayEnabled && !mqttConfig) {
+      // Gateway enabled but no QR code scanned yet
+      logger.info('MQTT', 'Gateway enabled - waiting for QR code scan');
+      setGatewayError('Scan QR code to configure');
+      setMqttConnected(false);
+    }
+  }, [gatewayEnabled, mqttConfig, mqttBroker, mqttPort, mqttTopic, mqttUsername, mqttPassword, mqttTls]);
 
   useEffect(() => {
     const requestPermissions = async () => {
@@ -146,6 +378,11 @@ const BLEScannerScreen = () => {
       setDevices(prevDevices => {
         const newDevices = new Map(prevDevices);
         for (const [id, device] of newDevices) {
+          // Don't remove favorited devices
+          if (favoriteDevices.has(id)) {
+            continue;
+          }
+
           const age = now.getTime() - device.lastSeen.getTime();
           if (age > maxAge) {
             newDevices.delete(id);
@@ -163,7 +400,7 @@ const BLEScannerScreen = () => {
         BleManager.stopScan().catch(() => {});
       }
     };
-  }, [handleDiscoverPeripheral]);
+  }, [handleDiscoverPeripheral, favoriteDevices]);
 
   const startScan = async () => {
     if (!permissionsGranted) {
@@ -286,7 +523,7 @@ const BLEScannerScreen = () => {
   };
 
   const postToGateway = useCallback(async () => {
-    if (!gatewayEnabled || !gatewayUrl) {
+    if (!gatewayEnabled) {
       return;
     }
 
@@ -298,28 +535,36 @@ const BLEScannerScreen = () => {
         advertising: cleanAdvertisingData(device.advertising),
       }));
 
-      const response = await fetch(gatewayUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(devicesArray),
-      });
+      logger.debug('BLE', `Sending ${devicesArray.length} devices`);
 
-      if (response.ok) {
-        setLastGatewayPost(new Date());
-        setGatewayError(null);
-      } else {
-        setGatewayError(`HTTP ${response.status}`);
+      if (!mqttClientRef.current || !mqttClientRef.current.isConnected()) {
+        setGatewayError('MQTT not connected');
+        logger.error('MQTT', 'Cannot publish - not connected');
+        return;
       }
+
+      const payload = JSON.stringify(devicesArray);
+      const message = new Paho.MQTT.Message(payload);
+      message.destinationName = mqttTopic;
+      message.qos = 1; // QoS 1: at least once delivery
+      message.retained = false; // Don't retain messages
+
+      logger.info('MQTT', `Publishing ${devicesArray.length} devices to topic: ${mqttTopic}`);
+      mqttClientRef.current.send(message);
+
+      setLastGatewayPost(new Date());
+      setGatewayError(null);
+      logger.success('MQTT', `Published ${devicesArray.length} devices to ${mqttTopic}`);
     } catch (error) {
-      console.error('Gateway post error:', error);
-      setGatewayError(error instanceof Error ? error.message : 'Network error');
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('GATEWAY', `Error: ${errorMsg}`);
+      setGatewayError(errorMsg);
     }
-  }, [gatewayEnabled, gatewayUrl, devices]);
+  }, [gatewayEnabled, mqttTopic, devices]);
 
   useEffect(() => {
-    if (gatewayEnabled) {
+    // Only start posting if gateway is enabled AND we have a valid MQTT connection
+    if (gatewayEnabled && mqttConnected && mqttConfig) {
       // Post immediately when enabled
       postToGateway();
 
@@ -349,7 +594,7 @@ const BLEScannerScreen = () => {
         setNextPostIn(null);
       };
     }
-  }, [gatewayEnabled, gatewayInterval, postToGateway]);
+  }, [gatewayEnabled, mqttConnected, mqttConfig, gatewayInterval, postToGateway]);
 
   const connectToDevice = async (deviceId: string) => {
     try {
@@ -364,33 +609,87 @@ const BLEScannerScreen = () => {
     }
   };
 
-  const addByteFilter = () => {
-    const newFilter: ByteFilter = {
-      id: `byte-${Date.now()}`,
-      position: '0',
-      value: '',
-      enabled: true,
-    };
-    setMfgByteFilters([...mfgByteFilters, newFilter]);
+  // Match raw byte pattern (e.g., "aabbxxcc" where xx = don't care)
+  const matchesBytePattern = (bytes: number[], pattern: string): boolean => {
+    if (!pattern) return true;
+
+    // Remove spaces and convert to lowercase
+    const cleanPattern = pattern.replace(/\s/g, '').toLowerCase();
+
+    // Pattern must be pairs of hex digits or 'xx'
+    if (cleanPattern.length % 2 !== 0) return false;
+
+    const patternBytes: Array<number | null> = [];
+    for (let i = 0; i < cleanPattern.length; i += 2) {
+      const pair = cleanPattern.substring(i, i + 2);
+      if (pair === 'xx') {
+        patternBytes.push(null); // wildcard
+      } else {
+        const value = parseInt(pair, 16);
+        if (isNaN(value)) return false;
+        patternBytes.push(value);
+      }
+    }
+
+    // Check if pattern matches anywhere in the byte array
+    for (let offset = 0; offset <= bytes.length - patternBytes.length; offset++) {
+      let match = true;
+      for (let i = 0; i < patternBytes.length; i++) {
+        const patternByte = patternBytes[i];
+        if (patternByte !== null && bytes[offset + i] !== patternByte) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return true;
+    }
+
+    return false;
   };
 
-  const removeByteFilter = (id: string) => {
-    setMfgByteFilters(mfgByteFilters.filter(f => f.id !== id));
-  };
+  const getRawAdvertisingBytes = (device: ScannedDevice): number[] => {
+    // ALWAYS use raw advertising data, no fallback
+    if (device.advertising?.rawData) {
+      const rawData = device.advertising.rawData;
+      let bytes: number[] = [];
 
-  const updateByteFilter = (id: string, field: keyof ByteFilter, value: any) => {
-    setMfgByteFilters(mfgByteFilters.map(f =>
-      f.id === id ? { ...f, [field]: value } : f
-    ));
+      if (Array.isArray(rawData)) {
+        bytes = rawData;
+      } else if (rawData.bytes) {
+        bytes = Array.from(rawData.bytes as number[]);
+      } else if (rawData.data) {
+        bytes = Array.from(rawData.data as number[]);
+      }
+
+      if (bytes.length > 0) {
+        logger.debug('BLE', `Device ${device.name || device.id} using rawData, length: ${bytes.length}, first 10: ${bytes.slice(0, 10).map((b, i) => `[${i}]=0x${b.toString(16).padStart(2, '0')}`).join(' ')}`);
+        return bytes;
+      }
+    }
+
+    // Return empty array if no rawData available
+    return [];
   };
 
   const getManufacturerDataBytes = (device: ScannedDevice): number[] => {
     if (!device.advertising?.manufacturerData) return [];
     const mfgData = device.advertising.manufacturerData;
-    if (Array.isArray(mfgData)) return mfgData;
-    if (mfgData.bytes) return Array.from(mfgData.bytes as number[]);
-    if (mfgData.data) return Array.from(mfgData.data as number[]);
-    return [];
+    let bytes: number[] = [];
+
+    if (Array.isArray(mfgData)) {
+      bytes = mfgData;
+      logger.debug('BLE', `Device ${device.name || device.id} mfg data is array, length: ${bytes.length}, first 10: ${bytes.slice(0, 10).map((b, i) => `[${i}]=0x${b.toString(16).padStart(2, '0')}`).join(' ')}`);
+    } else if (mfgData.bytes) {
+      bytes = Array.from(mfgData.bytes as number[]);
+      logger.debug('BLE', `Device ${device.name || device.id} mfg data has .bytes property, length: ${bytes.length}`);
+    } else if (mfgData.data) {
+      bytes = Array.from(mfgData.data as number[]);
+      logger.debug('BLE', `Device ${device.name || device.id} mfg data has .data property, length: ${bytes.length}`);
+    } else {
+      logger.debug('BLE', `Device ${device.name || device.id} mfg data unknown type: ${typeof mfgData}, value: ${JSON.stringify(mfgData)}`);
+    }
+
+    return bytes;
   };
 
   const filterAndSortDevices = () => {
@@ -429,48 +728,50 @@ const BLEScannerScreen = () => {
       // Company ID filter
       if (companyIdFilter && device.advertising?.manufacturerData) {
         const bytes = getManufacturerDataBytes(device);
-        if (bytes.length < 2) return false;
-        const companyId = bytes[0] | (bytes[1] << 8);
+        logger.debug('BLE', `CompanyID filter: bytes.length=${bytes.length}, need >=7`);
+        if (bytes.length < 7) {
+          logger.debug('BLE', `CompanyID filter REJECT: bytes too short`);
+          return false;
+        }
+        const companyId = bytes[5] | (bytes[6] << 8);
         const filterCompanyId = parseInt(companyIdFilter.replace(/^0x/i, ''), 16);
-        if (isNaN(filterCompanyId) || companyId !== filterCompanyId) return false;
+        logger.debug('BLE', `CompanyID check: got=0x${companyId.toString(16)}, want=${companyIdFilter} (0x${filterCompanyId.toString(16)})`);
+        if (isNaN(filterCompanyId) || companyId !== filterCompanyId) {
+          logger.debug('BLE', `CompanyID filter REJECT: mismatch`);
+          return false;
+        }
+        logger.debug('BLE', `CompanyID filter PASS`);
       }
 
-      // Manufacturer data byte filters (AND logic)
-      const activeByteFilters = mfgByteFilters.filter(f => f.enabled && f.position && f.value);
-      if (activeByteFilters.length > 0) {
-        if (!device.advertising?.manufacturerData) return false;
-        const bytes = getManufacturerDataBytes(device);
-
-        for (const filter of activeByteFilters) {
-          const pos = parseInt(filter.position);
-          const expectedValue = parseInt(filter.value.replace(/^0x/i, ''), 16);
-
-          if (isNaN(pos) || isNaN(expectedValue)) continue;
-          if (pos < 0 || pos >= bytes.length) return false;
-          if (bytes[pos] !== expectedValue) return false;
-        }
+      // Raw advertising data byte pattern filter
+      if (rawBytePattern) {
+        const bytes = getRawAdvertisingBytes(device);
+        if (bytes.length === 0) return false;
+        if (!matchesBytePattern(bytes, rawBytePattern)) return false;
       }
 
       return true;
     });
 
-    // Sort
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'rssi':
-          return b.rssi - a.rssi; // Strongest first
-        case 'name':
-          const nameA = (a.name || 'Unknown').toLowerCase();
-          const nameB = (b.name || 'Unknown').toLowerCase();
-          return nameA.localeCompare(nameB);
-        case 'firstSeen':
-          return (a.firstSeen?.getTime() || 0) - (b.firstSeen?.getTime() || 0);
-        case 'lastSeen':
-          return b.lastSeen.getTime() - a.lastSeen.getTime(); // Most recent first
-        default:
-          return 0;
-      }
-    });
+    // Sort (only if not using insertion order)
+    if (sortBy !== 'insertion') {
+      filtered.sort((a, b) => {
+        switch (sortBy) {
+          case 'rssi':
+            return b.rssi - a.rssi; // Strongest first
+          case 'name':
+            const nameA = (a.name || 'Unknown').toLowerCase();
+            const nameB = (b.name || 'Unknown').toLowerCase();
+            return nameA.localeCompare(nameB);
+          case 'firstSeen':
+            return (a.firstSeen?.getTime() || 0) - (b.firstSeen?.getTime() || 0);
+          case 'lastSeen':
+            return b.lastSeen.getTime() - a.lastSeen.getTime(); // Most recent first
+          default:
+            return 0;
+        }
+      });
+    }
 
     return filtered;
   };
@@ -485,7 +786,7 @@ const BLEScannerScreen = () => {
     if (showOnlyNamed) count++;
     if (serviceUuidFilter) count++;
     if (companyIdFilter) count++;
-    count += mfgByteFilters.filter(f => f.enabled && f.position && f.value).length;
+    if (rawBytePattern) count++;
     return count;
   };
 
@@ -496,8 +797,34 @@ const BLEScannerScreen = () => {
     setShowOnlyNamed(false);
     setServiceUuidFilter('');
     setCompanyIdFilter('');
-    setMfgByteFilters([]);
+    setRawBytePattern('');
     logger.info('BLE', 'All filters cleared');
+  };
+
+  const applyPreset = (preset: FilterPreset) => {
+    // Clear existing filters first
+    setNameFilter('');
+    setAddressFilter('');
+    setShowOnlyNamed(false);
+    setServiceUuidFilter('');
+    setCompanyIdFilter('');
+    setRawBytePattern('');
+
+    // Apply preset filters
+    if (preset.companyId) {
+      setCompanyIdFilter(preset.companyId);
+    }
+    if (preset.serviceUuid) {
+      setServiceUuidFilter(preset.serviceUuid);
+    }
+    if (preset.bytePattern) {
+      setRawBytePattern(preset.bytePattern);
+    }
+
+    // Ensure advanced filters are visible
+    setShowAdvancedFilters(true);
+
+    logger.info('BLE', `Applied preset: ${preset.name}`);
   };
 
   const toggleFieldExpansion = (deviceId: string, fieldName: string) => {
@@ -515,6 +842,20 @@ const BLEScannerScreen = () => {
 
   const isFieldExpanded = (deviceId: string, fieldName: string): boolean => {
     return expandedFields.has(`${deviceId}:${fieldName}`);
+  };
+
+  const toggleFavorite = (deviceId: string) => {
+    setFavoriteDevices(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(deviceId)) {
+        newSet.delete(deviceId);
+        logger.info('BLE', `Removed device ${deviceId} from favorites`);
+      } else {
+        newSet.add(deviceId);
+        logger.info('BLE', `Added device ${deviceId} to favorites`);
+      }
+      return newSet;
+    });
   };
 
   const bytesToHex = (data: any): string => {
@@ -537,14 +878,37 @@ const BLEScannerScreen = () => {
     }
   };
 
+  const bytesToHexWithOffsets = (data: any): string => {
+    if (!data) return '';
+    try {
+      let bytes: number[] = [];
+      if (data.bytes) bytes = Array.from(data.bytes as number[]);
+      else if (Array.isArray(data)) bytes = Array.from(data);
+      else if (data.data) bytes = Array.from(data.data as number[]);
+      else if (typeof data === 'string') return data;
+
+      // Trim trailing zeros for cleaner display
+      // Note: Filter still uses full array, so positions remain correct
+      while (bytes.length > 0 && bytes[bytes.length - 1] === 0) {
+        bytes.pop();
+      }
+
+      // Format with offsets: [0]=02 [1]=01 [2]=06 etc.
+      // Indices match the actual byte positions in the full array
+      return bytes.map((b, i) => `[${i}]=${b.toString(16).padStart(2, '0')}`).join(' ').toUpperCase();
+    } catch (e) {
+      return '';
+    }
+  };
+
   const decodeManufacturerData = (hex: string): string[] => {
     const decoded: string[] = [];
     const bytes = hex.split(' ').map(b => parseInt(b, 16));
 
-    if (bytes.length < 2) return decoded;
+    if (bytes.length < 7) return decoded;
 
-    const companyId = bytes[0] | (bytes[1] << 8);
-    const data = bytes.slice(2);
+    const companyId = bytes[5] | (bytes[6] << 8);
+    const data = bytes.slice(7);
 
     decoded.push(`Company ID: 0x${companyId.toString(16).padStart(4, '0').toUpperCase()}`);
 
@@ -698,14 +1062,15 @@ const BLEScannerScreen = () => {
 
     // Manufacturer Data
     if (adv.manufacturerData) {
-      const hex = bytesToHex(adv.manufacturerData);
-      if (hex) {
+      const hexWithOffsets = bytesToHexWithOffsets(adv.manufacturerData);
+      const hexPlain = bytesToHex(adv.manufacturerData);
+      if (hexWithOffsets) {
         fields.push(renderAdvertisingField(
           device,
           'mfgData',
           'Manufacturer Data',
-          hex,
-          () => decodeManufacturerData(hex)
+          hexWithOffsets,
+          () => decodeManufacturerData(hexPlain)
         ));
       }
     }
@@ -757,14 +1122,15 @@ const BLEScannerScreen = () => {
 
     // Raw Data
     if (adv.rawData) {
-      const rawHex = bytesToHex(adv.rawData);
-      if (rawHex) {
+      const rawHexWithOffsets = bytesToHexWithOffsets(adv.rawData);
+      if (rawHexWithOffsets) {
+        const byteCount = rawHexWithOffsets.split(' ').length;
         fields.push(renderAdvertisingField(
           device,
           'rawData',
           'Raw Advertisement',
-          `${rawHex.split(' ').length} bytes`,
-          () => [`Full packet: ${rawHex}`]
+          `${byteCount} bytes`,
+          () => [`Full packet: ${rawHexWithOffsets}`]
         ));
       }
     }
@@ -806,6 +1172,13 @@ const BLEScannerScreen = () => {
       <View style={styles.sortSection}>
         <Text style={styles.sortLabel}>Sort by:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll}>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'insertion' && styles.sortButtonActive]}
+            onPress={() => setSortBy('insertion')}>
+            <Text style={[styles.sortButtonText, sortBy === 'insertion' && styles.sortButtonTextActive]}>
+              Insertion Order
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.sortButton, sortBy === 'rssi' && styles.sortButtonActive]}
             onPress={() => setSortBy('rssi')}>
@@ -902,14 +1275,14 @@ const BLEScannerScreen = () => {
               </TouchableOpacity>
             </View>
           )}
-          {mfgByteFilters.filter(f => f.enabled && f.position && f.value).map(filter => (
-            <View key={filter.id} style={[styles.filterChip, styles.filterChipAdvanced]}>
-              <Text style={styles.filterChipText}>byte[{filter.position}]=={filter.value}</Text>
-              <TouchableOpacity onPress={() => removeByteFilter(filter.id)} style={styles.filterChipClose}>
+          {rawBytePattern && (
+            <View style={[styles.filterChip, styles.filterChipAdvanced]}>
+              <Text style={styles.filterChipText}>pattern: {rawBytePattern}</Text>
+              <TouchableOpacity onPress={() => setRawBytePattern('')} style={styles.filterChipClose}>
                 <Text style={styles.filterChipCloseText}>×</Text>
               </TouchableOpacity>
             </View>
-          ))}
+          )}
         </ScrollView>
       )}
 
@@ -922,9 +1295,7 @@ const BLEScannerScreen = () => {
           showsVerticalScrollIndicator={true}>
           {/* RSSI Slider */}
           <View style={styles.rssiSliderContainer}>
-            <Text style={styles.rssiLabel}>
-              Min RSSI: {rssiFilter} dBm {rssiFilter > -100 && `(${Math.abs(rssiFilter - 0)} units)`}
-            </Text>
+            <Text style={styles.rssiLabel}>Min RSSI: {rssiFilter} dBm</Text>
             <Slider
               style={styles.rssiSlider}
               minimumValue={-100}
@@ -936,11 +1307,6 @@ const BLEScannerScreen = () => {
               maximumTrackTintColor="#E5E5EA"
               thumbTintColor="#007AFF"
             />
-            <View style={styles.rssiLabels}>
-              <Text style={styles.rssiLabelSmall}>-100 (Far)</Text>
-              <Text style={styles.rssiLabelSmall}>-65 (Medium)</Text>
-              <Text style={styles.rssiLabelSmall}>-30 (Near)</Text>
-            </View>
           </View>
 
           {/* Text Filters */}
@@ -971,6 +1337,22 @@ const BLEScannerScreen = () => {
                 trackColor={{false: '#767577', true: '#007AFF'}}
               />
             </View>
+          </View>
+
+          {/* Filter Presets */}
+          <View style={styles.presetsSection}>
+            <Text style={styles.presetsLabel}>Quick Filters:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetsScroll}>
+              {FILTER_PRESETS.map(preset => (
+                <TouchableOpacity
+                  key={preset.name}
+                  style={styles.presetButton}
+                  onPress={() => applyPreset(preset)}>
+                  <Text style={styles.presetIcon}>{preset.icon}</Text>
+                  <Text style={styles.presetName}>{preset.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
           {/* Advanced Filters Toggle */}
@@ -1013,56 +1395,18 @@ const BLEScannerScreen = () => {
                 />
               </View>
 
-              {/* Manufacturer Data Byte Filters */}
+              {/* Raw Advertising Byte Pattern */}
               <View style={styles.advancedFilterGroup}>
-                <View style={styles.byteFilterHeader}>
-                  <Text style={styles.advancedFilterLabel}>Manufacturer Data Byte Filters</Text>
-                  <TouchableOpacity onPress={addByteFilter} style={styles.addByteFilterButton}>
-                    <Text style={styles.addByteFilterText}>+ Add Rule</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.advancedFilterHint}>All rules must match (AND logic)</Text>
-
-                {mfgByteFilters.map((filter, index) => (
-                  <View key={filter.id} style={styles.byteFilterRow}>
-                    <Text style={styles.byteFilterIndex}>#{index + 1}</Text>
-                    <View style={styles.byteFilterInputs}>
-                      <TextInput
-                        style={[styles.byteFilterInput, styles.byteFilterPosition]}
-                        value={filter.position}
-                        onChangeText={(val) => updateByteFilter(filter.id, 'position', val)}
-                        placeholder="Pos"
-                        placeholderTextColor="#999"
-                        keyboardType="numeric"
-                      />
-                      <Text style={styles.byteFilterEqual}>==</Text>
-                      <TextInput
-                        style={[styles.byteFilterInput, styles.byteFilterValue]}
-                        value={filter.value}
-                        onChangeText={(val) => updateByteFilter(filter.id, 'value', val)}
-                        placeholder="0x00"
-                        placeholderTextColor="#999"
-                        autoCapitalize="none"
-                      />
-                    </View>
-                    <Switch
-                      value={filter.enabled}
-                      onValueChange={(val) => updateByteFilter(filter.id, 'enabled', val)}
-                      trackColor={{false: '#767577', true: '#34C759'}}
-                    />
-                    <TouchableOpacity
-                      onPress={() => removeByteFilter(filter.id)}
-                      style={styles.removeByteFilterButton}>
-                      <Text style={styles.removeByteFilterText}>×</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-
-                {mfgByteFilters.length === 0 && (
-                  <Text style={styles.noByteFiltersText}>
-                    No byte filters. Tap "+ Add Rule" to create one.
-                  </Text>
-                )}
+                <Text style={styles.advancedFilterLabel}>Raw Advertising Byte Pattern</Text>
+                <Text style={styles.advancedFilterHint}>Hex pattern with 'xx' for wildcards (e.g., "aabbxxcc" matches 0xAA 0xBB ?? ?? 0xCC)</Text>
+                <TextInput
+                  style={styles.advancedFilterInput}
+                  value={rawBytePattern}
+                  onChangeText={setRawBytePattern}
+                  placeholder="aabbxxcc"
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                />
               </View>
             </View>
           )}
@@ -1071,7 +1415,7 @@ const BLEScannerScreen = () => {
 
       <View style={styles.gatewaySection}>
         <View style={styles.gatewaySectionHeader}>
-          <Text style={styles.gatewaySectionTitle}>BLE Gateway Mode</Text>
+          <Text style={styles.gatewaySectionTitle}>MQTT Gateway</Text>
           <Switch
             value={gatewayEnabled}
             onValueChange={setGatewayEnabled}
@@ -1081,21 +1425,14 @@ const BLEScannerScreen = () => {
 
         {gatewayEnabled && (
           <>
+            {/* Status Bar */}
             <View style={styles.gatewayStatusBar}>
-              {lastGatewayPost ? (
-                <View>
-                  <Text style={styles.gatewayStatusText}>
-                    ✓ Last posted: {lastGatewayPost.toLocaleTimeString()}
-                  </Text>
-                  {nextPostIn !== null && (
-                    <Text style={styles.gatewayNextText}>
-                      Next in {nextPostIn}s
-                    </Text>
-                  )}
-                </View>
-              ) : (
-                <Text style={styles.gatewayWaitingText}>
-                  {nextPostIn !== null ? `Sending in ${nextPostIn}s...` : 'Initializing...'}
+              <Text style={[styles.mqttStatusText, mqttConnected ? styles.mqttConnected : styles.mqttDisconnected]}>
+                {mqttConnected ? `✓ ${mqttBroker}` : `○ Connecting...`}
+              </Text>
+              {lastGatewayPost && nextPostIn !== null && (
+                <Text style={styles.gatewayNextText}>
+                  Next: {nextPostIn}s
                 </Text>
               )}
               {gatewayError && (
@@ -1105,14 +1442,21 @@ const BLEScannerScreen = () => {
               )}
             </View>
 
-            <TextInput
-              style={styles.gatewayInput}
-              value={gatewayUrl}
-              onChangeText={setGatewayUrl}
-              placeholder="REST Endpoint URL"
-              placeholderTextColor="#999"
-              autoCapitalize="none"
-            />
+            {/* Configuration */}
+            <View style={styles.configRow}>
+              {mqttConfig ? (
+                <Text style={styles.configText} numberOfLines={1} ellipsizeMode="middle">
+                  {mqttTopic}
+                </Text>
+              ) : (
+                <Text style={styles.configPlaceholder}>Not configured</Text>
+              )}
+              <TouchableOpacity
+                style={styles.qrButtonCompact}
+                onPress={requestCameraPermission}>
+                <Text style={styles.qrButtonCompactText}>📷</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.intervalRow}>
               <Text style={styles.intervalLabel}>Interval:</Text>
@@ -1121,10 +1465,9 @@ const BLEScannerScreen = () => {
                 value={gatewayInterval}
                 onChangeText={setGatewayInterval}
                 keyboardType="numeric"
-                placeholder="10"
                 placeholderTextColor="#999"
               />
-              <Text style={styles.intervalLabel}>seconds</Text>
+              <Text style={styles.intervalLabel}>sec</Text>
             </View>
           </>
         )}
@@ -1142,20 +1485,27 @@ const BLEScannerScreen = () => {
         }>
         {filteredDevices.map(device => (
           <View key={device.id} style={styles.deviceCard}>
-            <TouchableOpacity
-              style={styles.deviceMainInfo}
-              onPress={() => connectToDevice(device.id)}>
+            <View style={styles.deviceMainInfo}>
               <View style={styles.deviceRow}>
                 <Text style={styles.deviceName}>
                   {device.name || 'Unknown Device'}
                 </Text>
-                <Text style={[
-                  styles.rssi,
-                  device.rssi > -70 ? styles.rssiGood :
-                  device.rssi > -85 ? styles.rssiMedium : styles.rssiBad
-                ]}>
-                  {device.rssi}
-                </Text>
+                <View style={styles.deviceHeaderRight}>
+                  <TouchableOpacity
+                    style={styles.favoriteButton}
+                    onPress={() => toggleFavorite(device.id)}>
+                    <Text style={styles.favoriteIcon}>
+                      {favoriteDevices.has(device.id) ? '★' : '☆'}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={[
+                    styles.rssi,
+                    device.rssi > -70 ? styles.rssiGood :
+                    device.rssi > -85 ? styles.rssiMedium : styles.rssiBad
+                  ]}>
+                    {device.rssi}
+                  </Text>
+                </View>
               </View>
               <View style={styles.deviceInfoRow}>
                 <Text style={styles.deviceInfoLabel}>Address: </Text>
@@ -1167,7 +1517,7 @@ const BLEScannerScreen = () => {
                   {device.lastSeen.toLocaleTimeString()}
                 </Text>
               </View>
-            </TouchableOpacity>
+            </View>
 
             <View style={styles.advertisingDataSection}>
               {renderDeviceAdvertising(device)}
@@ -1182,6 +1532,32 @@ const BLEScannerScreen = () => {
           </Text>
         )}
       </ScrollView>
+
+      {/* QR Code Scanner Modal */}
+      {showQRScanner && (
+        <View style={styles.qrModal}>
+          <View style={styles.qrTopContent}>
+            <Text style={styles.qrTitle}>Scan MQTT Config QR Code</Text>
+            <Text style={styles.qrSubtitle}>Position the QR code within the frame</Text>
+          </View>
+
+          <Camera
+            style={styles.qrCamera}
+            cameraType="back"
+            scanBarcode={true}
+            onReadCode={handleQRCodeScan}
+            showFrame={true}
+            laserColor="#34C759"
+            frameColor="#FFFFFF"
+          />
+
+          <TouchableOpacity
+            style={styles.qrCancelButton}
+            onPress={() => setShowQRScanner(false)}>
+            <Text style={styles.qrCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 };
@@ -1237,26 +1613,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   filtersScrollView: {
-    maxHeight: 400,
+    maxHeight: 120,
     backgroundColor: 'white',
     marginHorizontal: 12,
     borderRadius: 8,
     marginBottom: 8,
   },
   filters: {
-    padding: 12,
+    padding: 4,
   },
   filterRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: 3,
   },
   filterInput: {
     flex: 1,
     borderWidth: 1,
     borderColor: '#E5E5EA',
     borderRadius: 6,
-    padding: 8,
-    fontSize: 14,
+    padding: 4,
+    fontSize: 12,
     color: '#000',
   },
   switchRow: {
@@ -1379,65 +1755,89 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF9500',
   },
   rssiSliderContainer: {
-    marginBottom: 12,
+    marginBottom: 4,
   },
   rssiLabel: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
     color: '#000',
-    marginBottom: 8,
+    marginBottom: 2,
   },
   rssiSlider: {
     width: '100%',
-    height: 40,
+    height: 25,
   },
-  rssiLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: -8,
+  presetsSection: {
+    marginTop: 4,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
   },
-  rssiLabelSmall: {
+  presetsLabel: {
     fontSize: 11,
-    color: '#8E8E93',
-  },
-  advancedToggle: {
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-  },
-  advancedToggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FF9500',
-  },
-  advancedFiltersSection: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-  },
-  advancedFilterGroup: {
-    marginBottom: 16,
-  },
-  advancedFilterLabel: {
-    fontSize: 13,
     fontWeight: '600',
     color: '#000',
     marginBottom: 4,
   },
-  advancedFilterHint: {
+  presetsScroll: {
+    flexDirection: 'row',
+  },
+  presetButton: {
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    marginRight: 4,
+    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    minWidth: 50,
+  },
+  presetIcon: {
+    fontSize: 14,
+    marginBottom: 1,
+  },
+  presetName: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  advancedToggle: {
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+  },
+  advancedToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF9500',
+  },
+  advancedFiltersSection: {
+    marginTop: 4,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+  },
+  advancedFilterGroup: {
+    marginBottom: 8,
+  },
+  advancedFilterLabel: {
     fontSize: 11,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 2,
+  },
+  advancedFilterHint: {
+    fontSize: 10,
     color: '#8E8E93',
-    marginBottom: 6,
+    marginBottom: 3,
   },
   advancedFilterInput: {
     borderWidth: 1,
     borderColor: '#E5E5EA',
     borderRadius: 6,
-    padding: 8,
-    fontSize: 14,
+    padding: 4,
+    fontSize: 12,
     color: '#000',
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
@@ -1552,51 +1952,74 @@ const styles = StyleSheet.create({
   },
   gatewayStatusBar: {
     backgroundColor: '#F2F2F7',
-    padding: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 6,
     marginBottom: 8,
-    minHeight: 36,
-    justifyContent: 'center',
-  },
-  gatewayStatusText: {
-    fontSize: 12,
-    color: '#34C759',
-    fontWeight: '600',
-  },
-  gatewayWaitingText: {
-    fontSize: 12,
-    color: '#8E8E93',
-    fontWeight: '500',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   gatewayNextText: {
     fontSize: 11,
     color: '#8E8E93',
-    marginTop: 2,
+    fontWeight: '500',
   },
   gatewayErrorText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#FF3B30',
     fontWeight: '600',
-    marginTop: 4,
+  },
+  mqttStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
+  },
+  mqttConnected: {
+    color: '#34C759',
+  },
+  mqttDisconnected: {
+    color: '#FF9500',
+  },
+  configRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  configPlaceholder: {
+    flex: 1,
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  qrButtonCompact: {
+    backgroundColor: '#34C759',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  qrButtonCompactText: {
+    fontSize: 18,
   },
   intervalRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   intervalLabel: {
-    fontSize: 14,
-    color: '#000',
+    fontSize: 12,
+    color: '#666',
     fontWeight: '500',
   },
   intervalInput: {
     borderWidth: 1,
     borderColor: '#E5E5EA',
     borderRadius: 6,
-    padding: 8,
-    fontSize: 14,
+    padding: 6,
+    fontSize: 13,
     color: '#000',
-    marginHorizontal: 8,
-    width: 60,
+    marginHorizontal: 6,
+    width: 50,
     textAlign: 'center',
   },
   deviceList: {
@@ -1625,6 +2048,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#000',
     flex: 1,
+  },
+  deviceHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  favoriteButton: {
+    padding: 4,
+  },
+  favoriteIcon: {
+    fontSize: 20,
+    color: '#FFD700',
   },
   deviceInfoRow: {
     flexDirection: 'row',
@@ -1724,6 +2159,52 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontSize: 14,
     marginTop: 40,
+  },
+  qrModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000',
+    zIndex: 1000,
+    flexDirection: 'column',
+  },
+  qrCamera: {
+    flex: 1,
+  },
+  qrTopContent: {
+    padding: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    alignItems: 'center',
+  },
+  qrTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFF',
+    marginBottom: 8,
+  },
+  qrSubtitle: {
+    fontSize: 14,
+    color: '#CCC',
+  },
+  qrCancelButton: {
+    backgroundColor: '#FF3B30',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    margin: 20,
+  },
+  qrCancelText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  configText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#3C3C43',
+    fontFamily: 'monospace',
   },
 });
 
