@@ -40,6 +40,8 @@ interface ScannedDevice extends Peripheral {
   rssi: number;
   lastSeen: Date;
   firstSeen?: Date;
+  previousSeen?: Date;
+  advertisingInterval?: number; // in milliseconds
 }
 
 type SortOption = 'rssi' | 'name' | 'firstSeen' | 'lastSeen' | 'insertion';
@@ -160,11 +162,28 @@ const BLEScannerScreen = () => {
     setDevices(prevDevices => {
       const newDevices = new Map(prevDevices);
       const existingDevice = prevDevices.get(peripheral.id);
+      const now = new Date();
+
+      // Calculate advertising interval
+      let advertisingInterval = existingDevice?.advertisingInterval;
+      if (existingDevice?.lastSeen) {
+        const interval = now.getTime() - existingDevice.lastSeen.getTime();
+        // Only update interval if reasonable (between 20ms and 10 seconds)
+        if (interval >= 20 && interval <= 10000) {
+          // Use exponential moving average for smoother values
+          advertisingInterval = existingDevice.advertisingInterval
+            ? (existingDevice.advertisingInterval * 0.7 + interval * 0.3)
+            : interval;
+        }
+      }
+
       const device: ScannedDevice = {
         ...peripheral,
         rssi: peripheral.rssi || -100,
-        lastSeen: new Date(),
-        firstSeen: existingDevice?.firstSeen || new Date(),
+        lastSeen: now,
+        previousSeen: existingDevice?.lastSeen,
+        firstSeen: existingDevice?.firstSeen || now,
+        advertisingInterval,
       };
       newDevices.set(peripheral.id, device);
       return newDevices;
@@ -1517,6 +1536,16 @@ const BLEScannerScreen = () => {
                   {device.lastSeen.toLocaleTimeString()}
                 </Text>
               </View>
+              {device.advertisingInterval && (
+                <View style={styles.deviceInfoRow}>
+                  <Text style={styles.deviceInfoLabel}>Interval: </Text>
+                  <Text style={styles.intervalText}>
+                    {device.advertisingInterval < 1000
+                      ? `${Math.round(device.advertisingInterval)} ms`
+                      : `${(device.advertisingInterval / 1000).toFixed(2)} s`}
+                  </Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.advertisingDataSection}>
@@ -1613,31 +1642,32 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   filtersScrollView: {
-    maxHeight: 120,
+    maxHeight: 200,
     backgroundColor: 'white',
     marginHorizontal: 12,
     borderRadius: 8,
     marginBottom: 8,
   },
   filters: {
-    padding: 4,
+    padding: 8,
   },
   filterRow: {
     flexDirection: 'row',
-    marginBottom: 3,
+    marginBottom: 8,
   },
   filterInput: {
     flex: 1,
     borderWidth: 1,
     borderColor: '#E5E5EA',
     borderRadius: 6,
-    padding: 4,
-    fontSize: 12,
+    padding: 8,
+    fontSize: 14,
     color: '#000',
   },
   switchRow: {
     flexDirection: 'row',
-    marginTop: 4,
+    marginTop: 8,
+    marginBottom: 8,
   },
   switchContainer: {
     flexDirection: 'row',
@@ -1718,18 +1748,20 @@ const styles = StyleSheet.create({
   },
   filterChipsContainer: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 4,
     marginBottom: 4,
+    maxHeight: 50,
   },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#007AFF',
-    paddingVertical: 6,
-    paddingLeft: 12,
-    paddingRight: 8,
-    borderRadius: 16,
-    marginRight: 8,
+    paddingVertical: 4,
+    paddingLeft: 10,
+    paddingRight: 6,
+    borderRadius: 12,
+    marginRight: 6,
+    height: 28,
   },
   filterChipText: {
     fontSize: 12,
@@ -1768,47 +1800,47 @@ const styles = StyleSheet.create({
     height: 25,
   },
   presetsSection: {
-    marginTop: 4,
-    paddingTop: 4,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#E5E5EA',
   },
   presetsLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: '#000',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   presetsScroll: {
     flexDirection: 'row',
   },
   presetButton: {
     alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    marginRight: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginRight: 6,
     borderRadius: 8,
     backgroundColor: '#007AFF',
-    minWidth: 50,
+    minWidth: 60,
   },
   presetIcon: {
-    fontSize: 14,
-    marginBottom: 1,
+    fontSize: 16,
+    marginBottom: 2,
   },
   presetName: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '600',
     color: '#fff',
   },
   advancedToggle: {
-    paddingVertical: 4,
+    paddingVertical: 8,
     paddingHorizontal: 4,
-    marginTop: 4,
+    marginTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#E5E5EA',
   },
   advancedToggleText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#FF9500',
   },
@@ -2099,6 +2131,13 @@ const styles = StyleSheet.create({
   timestamp: {
     fontSize: 11,
     color: '#8E8E93',
+    flex: 1,
+  },
+  intervalText: {
+    fontSize: 11,
+    color: '#007AFF',
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     flex: 1,
   },
   advertisingDataSection: {
