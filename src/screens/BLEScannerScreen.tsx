@@ -127,8 +127,10 @@ const BLEScannerScreen = () => {
   const [addressFilter, setAddressFilter] = useState('');
   const [showOnlyNamed, setShowOnlyNamed] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('insertion');
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showSortSection, setShowSortSection] = useState(false);
+  const [showMQTTSection, setShowMQTTSection] = useState(false);
 
   // Advanced filters
   const [serviceUuidFilter, setServiceUuidFilter] = useState('');
@@ -149,6 +151,8 @@ const BLEScannerScreen = () => {
   const [mqttConfig, setMqttConfig] = useState<MQTTConfig | null>(null);
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [gatewayInterval, setGatewayInterval] = useState('10');
+  const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
+  const [showFABMenu, setShowFABMenu] = useState(false);
   const [lastGatewayPost, setLastGatewayPost] = useState<Date | null>(null);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [nextPostIn, setNextPostIn] = useState<number | null>(null);
@@ -328,6 +332,8 @@ const BLEScannerScreen = () => {
       setMqttConnected(false);
     }
   }, [gatewayEnabled, mqttConfig, mqttBroker, mqttPort, mqttTopic, mqttUsername, mqttPassword, mqttTls]);
+
+  // TODO: Load favorite devices from persistent storage
 
   useEffect(() => {
     const requestPermissions = async () => {
@@ -775,6 +781,13 @@ const BLEScannerScreen = () => {
     // Sort (only if not using insertion order)
     if (sortBy !== 'insertion') {
       filtered.sort((a, b) => {
+        // Always put starred devices first
+        const aStarred = favoriteDevices.has(a.id);
+        const bStarred = favoriteDevices.has(b.id);
+        if (aStarred && !bStarred) return -1;
+        if (!aStarred && bStarred) return 1;
+
+        // Then apply the selected sort
         switch (sortBy) {
           case 'rssi':
             return b.rssi - a.rssi; // Strongest first
@@ -789,6 +802,15 @@ const BLEScannerScreen = () => {
           default:
             return 0;
         }
+      });
+    } else {
+      // Even in insertion order, starred devices should be first
+      filtered.sort((a, b) => {
+        const aStarred = favoriteDevices.has(a.id);
+        const bStarred = favoriteDevices.has(b.id);
+        if (aStarred && !bStarred) return -1;
+        if (!aStarred && bStarred) return 1;
+        return 0; // Keep insertion order for devices with same starred status
       });
     }
 
@@ -873,6 +895,7 @@ const BLEScannerScreen = () => {
         newSet.add(deviceId);
         logger.info('BLE', `Added device ${deviceId} to favorites`);
       }
+      // TODO: Save to persistent storage
       return newSet;
     });
   };
@@ -1160,90 +1183,15 @@ const BLEScannerScreen = () => {
   return (
     <View style={styles.container}>
       {gatewayEnabled && <KeepAwake />}
+      {/* Clean Header */}
       <View style={styles.header}>
         <Text style={styles.headerText}>BLE Scanner</Text>
-        <Text style={styles.statusText}>
-          {isScanning ? 'Scanning...' : `${filteredDevices.length} / ${devices.size} devices`}
+        <Text style={styles.headerCount}>
+          {isScanning ? 'Scanning...' : `${filteredDevices.length}/${devices.size}`}
         </Text>
       </View>
 
-      <View style={styles.controls}>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={[styles.button, styles.primaryButton, isScanning && styles.stopButton]}
-            onPress={isScanning ? stopScan : startScan}
-            disabled={!permissionsGranted}>
-            <Text style={styles.buttonText}>
-              {isScanning ? 'STOP SCAN' : 'START SCAN'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, styles.secondaryButton]}
-            onPress={clearList}>
-            <Text style={styles.buttonText}>
-              CLEAR LIST
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Sort Options */}
-      <View style={styles.sortSection}>
-        <Text style={styles.sortLabel}>Sort by:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll}>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'insertion' && styles.sortButtonActive]}
-            onPress={() => setSortBy('insertion')}>
-            <Text style={[styles.sortButtonText, sortBy === 'insertion' && styles.sortButtonTextActive]}>
-              Insertion Order
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'rssi' && styles.sortButtonActive]}
-            onPress={() => setSortBy('rssi')}>
-            <Text style={[styles.sortButtonText, sortBy === 'rssi' && styles.sortButtonTextActive]}>
-              Signal Strength
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'name' && styles.sortButtonActive]}
-            onPress={() => setSortBy('name')}>
-            <Text style={[styles.sortButtonText, sortBy === 'name' && styles.sortButtonTextActive]}>
-              Name
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'lastSeen' && styles.sortButtonActive]}
-            onPress={() => setSortBy('lastSeen')}>
-            <Text style={[styles.sortButtonText, sortBy === 'lastSeen' && styles.sortButtonTextActive]}>
-              Last Seen
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortButton, sortBy === 'firstSeen' && styles.sortButtonActive]}
-            onPress={() => setSortBy('firstSeen')}>
-            <Text style={[styles.sortButtonText, sortBy === 'firstSeen' && styles.sortButtonTextActive]}>
-              First Seen
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* Filter Section Header */}
-      <TouchableOpacity
-        style={styles.filterHeader}
-        onPress={() => setShowFilters(!showFilters)}>
-        <Text style={styles.filterHeaderText}>
-          {showFilters ? '▼' : '▶'} Filters {getActiveFiltersCount() > 0 ? `(${getActiveFiltersCount()})` : ''}
-        </Text>
-        {getActiveFiltersCount() > 0 && (
-          <TouchableOpacity onPress={clearAllFilters} style={styles.clearFiltersButton}>
-            <Text style={styles.clearFiltersText}>Clear All</Text>
-          </TouchableOpacity>
-        )}
-      </TouchableOpacity>
-
-      {/* Active Filter Chips */}
+      {/* Active Filter Chips - Only show if filters are active */}
       {getActiveFiltersCount() > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChipsContainer}>
           {rssiFilter > -100 && (
@@ -1305,13 +1253,65 @@ const BLEScannerScreen = () => {
         </ScrollView>
       )}
 
-      {/* Filter Controls */}
-      {showFilters && (
-        <ScrollView
-          style={styles.filtersScrollView}
-          contentContainerStyle={styles.filters}
-          nestedScrollEnabled={true}
-          showsVerticalScrollIndicator={true}>
+      {/* Settings Panel Overlay */}
+      {showSortSection && (
+        <View style={styles.settingsOverlay}>
+          {/* Close button */}
+          <TouchableOpacity
+            style={styles.closeSettingsButton}
+            onPress={() => {
+              setShowSortSection(false);
+              setShowFilters(false);
+              setShowMQTTSection(false);
+            }}>
+            <Text style={styles.closeSettingsText}>✕ Close Settings</Text>
+          </TouchableOpacity>
+          <ScrollView style={styles.settingsContent}>
+        <View style={styles.sortSection}>
+        <Text style={styles.sortLabel}>Sort by:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll}>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'insertion' && styles.sortButtonActive]}
+            onPress={() => setSortBy('insertion')}>
+            <Text style={[styles.sortButtonText, sortBy === 'insertion' && styles.sortButtonTextActive]}>
+              Insertion Order
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'rssi' && styles.sortButtonActive]}
+            onPress={() => setSortBy('rssi')}>
+            <Text style={[styles.sortButtonText, sortBy === 'rssi' && styles.sortButtonTextActive]}>
+              Signal Strength
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'name' && styles.sortButtonActive]}
+            onPress={() => setSortBy('name')}>
+            <Text style={[styles.sortButtonText, sortBy === 'name' && styles.sortButtonTextActive]}>
+              Name
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'lastSeen' && styles.sortButtonActive]}
+            onPress={() => setSortBy('lastSeen')}>
+            <Text style={[styles.sortButtonText, sortBy === 'lastSeen' && styles.sortButtonTextActive]}>
+              Last Seen
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'firstSeen' && styles.sortButtonActive]}
+            onPress={() => setSortBy('firstSeen')}>
+            <Text style={[styles.sortButtonText, sortBy === 'firstSeen' && styles.sortButtonTextActive]}>
+              First Seen
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+      )}
+
+      {/* Filter Section */}
+        <View style={styles.filtersScrollView}>
+        <View style={styles.filters}>
           {/* RSSI Slider */}
           <View style={styles.rssiSliderContainer}>
             <Text style={styles.rssiLabel}>Min RSSI: {rssiFilter} dBm</Text>
@@ -1374,18 +1374,13 @@ const BLEScannerScreen = () => {
             </ScrollView>
           </View>
 
-          {/* Advanced Filters Toggle */}
-          <TouchableOpacity
-            style={styles.advancedToggle}
-            onPress={() => setShowAdvancedFilters(!showAdvancedFilters)}>
-            <Text style={styles.advancedToggleText}>
-              {showAdvancedFilters ? '▼' : '▶'} Advanced Payload Filtering
-            </Text>
-          </TouchableOpacity>
-
           {/* Advanced Filters Section */}
-          {showAdvancedFilters && (
-            <View style={styles.advancedFiltersSection}>
+          <View style={styles.advancedToggle}>
+            <Text style={styles.advancedToggleText}>
+              Advanced Payload Filtering
+            </Text>
+          </View>
+          <View style={styles.advancedFiltersSection}>
               {/* Service UUID Filter */}
               <View style={styles.advancedFilterGroup}>
                 <Text style={styles.advancedFilterLabel}>Service UUID(s)</Text>
@@ -1427,27 +1422,31 @@ const BLEScannerScreen = () => {
                   autoCapitalize="none"
                 />
               </View>
-            </View>
-          )}
-        </ScrollView>
+          </View>
+        </View>
+      </View>
+          </ScrollView>
+        </View>
       )}
 
-      <View style={styles.gatewaySection}>
+      {/* MQTT Gateway Overlay */}
+      {showMQTTSection && (
+        <View style={styles.settingsOverlay}>
+          <TouchableOpacity
+            style={styles.closeSettingsButton}
+            onPress={() => setShowMQTTSection(false)}>
+            <Text style={styles.closeSettingsText}>✕ Close MQTT Gateway</Text>
+          </TouchableOpacity>
+          <ScrollView style={styles.settingsContent}>
+        <View style={styles.gatewaySection}>
         <View style={styles.gatewaySectionHeader}>
           <Text style={styles.gatewaySectionTitle}>MQTT Gateway</Text>
-          <Switch
-            value={gatewayEnabled}
-            onValueChange={setGatewayEnabled}
-            trackColor={{false: '#767577', true: '#34C759'}}
-          />
         </View>
 
-        {gatewayEnabled && (
-          <>
             {/* Status Bar */}
             <View style={styles.gatewayStatusBar}>
               <Text style={[styles.mqttStatusText, mqttConnected ? styles.mqttConnected : styles.mqttDisconnected]}>
-                {mqttConnected ? `✓ ${mqttBroker}` : `○ Connecting...`}
+                {mqttConnected ? `✓ ${mqttBroker || 'Connected'}` : (mqttConfig ? '○ Connecting...' : '○ Not configured')}
               </Text>
               {lastGatewayPost && nextPostIn !== null && (
                 <Text style={styles.gatewayNextText}>
@@ -1488,9 +1487,10 @@ const BLEScannerScreen = () => {
               />
               <Text style={styles.intervalLabel}>sec</Text>
             </View>
-          </>
-        )}
       </View>
+          </ScrollView>
+        </View>
+      )}
 
       <ScrollView
         style={styles.deviceList}
@@ -1567,18 +1567,20 @@ const BLEScannerScreen = () => {
         <View style={styles.qrModal}>
           <View style={styles.qrTopContent}>
             <Text style={styles.qrTitle}>Scan MQTT Config QR Code</Text>
-            <Text style={styles.qrSubtitle}>Position the QR code within the frame</Text>
+            <Text style={styles.qrSubtitle}>Position the QR code in the center</Text>
           </View>
 
-          <Camera
-            style={styles.qrCamera}
-            cameraType="back"
-            scanBarcode={true}
-            onReadCode={handleQRCodeScan}
-            showFrame={true}
-            laserColor="#34C759"
-            frameColor="#FFFFFF"
-          />
+          <View style={styles.qrCameraContainer}>
+            <Camera
+              style={styles.qrCamera}
+              cameraType="back"
+              scanBarcode={true}
+              onReadCode={handleQRCodeScan}
+              showFrame={true}
+              laserColor="#34C759"
+              frameColor="#FFFFFF"
+            />
+          </View>
 
           <TouchableOpacity
             style={styles.qrCancelButton}
@@ -1587,6 +1589,65 @@ const BLEScannerScreen = () => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Floating Action Button with Menu */}
+      {showFABMenu && (
+        <>
+          {/* Backdrop */}
+          <TouchableOpacity
+            style={styles.fabBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowFABMenu(false)}
+          />
+          {/* Menu Items */}
+          <View style={styles.fabMenuContainer}>
+            <TouchableOpacity
+              style={styles.fabMenuItem}
+              onPress={() => {
+                isScanning ? stopScan() : startScan();
+                setShowFABMenu(false);
+              }}>
+              <Text style={styles.fabMenuIcon}>{isScanning ? '⏸' : '▶'}</Text>
+              <Text style={styles.fabMenuText}>{isScanning ? 'Stop Scan' : 'Start Scan'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.fabMenuItem}
+              onPress={() => {
+                clearList();
+                setShowFABMenu(false);
+              }}>
+              <Text style={styles.fabMenuIcon}>🗑</Text>
+              <Text style={styles.fabMenuText}>Clear List</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.fabMenuItem}
+              onPress={() => {
+                setShowFABMenu(false);
+                setShowMQTTSection(!showMQTTSection);
+              }}>
+              <Text style={styles.fabMenuIcon}>📡</Text>
+              <Text style={styles.fabMenuText}>MQTT Gateway</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.fabMenuItem}
+              onPress={() => {
+                setShowFABMenu(false);
+                setShowSortSection(!showSortSection);
+                setShowFilters(!showFilters);
+              }}>
+              <Text style={styles.fabMenuIcon}>🔧</Text>
+              <Text style={styles.fabMenuText}>Filters & Sort</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {/* FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setShowFABMenu(!showFABMenu)}>
+        <Text style={styles.fabIcon}>{showFABMenu ? '✕' : '+'}</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -1596,6 +1657,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F2F2F7',
   },
+  settingsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#F2F2F7',
+    zIndex: 1000,
+  },
+  settingsContent: {
+    flex: 1,
+  },
+  closeSettingsButton: {
+    backgroundColor: '#007AFF',
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeSettingsText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   header: {
     backgroundColor: '#007AFF',
     padding: 16,
@@ -1604,9 +1688,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
     color: 'white',
+  },
+  headerCount: {
+    fontSize: 13,
+    color: 'white',
+    opacity: 0.9,
   },
   statusText: {
     fontSize: 14,
@@ -1614,7 +1703,8 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   controls: {
-    padding: 12,
+    padding: 8,
+    paddingBottom: 4,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -1642,14 +1732,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   filtersScrollView: {
-    maxHeight: 200,
+    flex: 1,
     backgroundColor: 'white',
-    marginHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 8,
   },
   filters: {
-    padding: 8,
+    padding: 16,
   },
   filterRow: {
     flexDirection: 'row',
@@ -1682,11 +1769,13 @@ const styles = StyleSheet.create({
   },
   sortSection: {
     backgroundColor: 'white',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 0,
+    borderRadius: 0,
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
   },
   sortLabel: {
     fontSize: 13,
@@ -1722,10 +1811,12 @@ const styles = StyleSheet.create({
   filterHeader: {
     backgroundColor: 'white',
     paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 4,
+    paddingHorizontal: 16,
+    marginHorizontal: 0,
+    borderRadius: 0,
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1747,10 +1838,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   filterChipsContainer: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    marginBottom: 4,
-    maxHeight: 50,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginBottom: 2,
+    maxHeight: 40,
   },
   filterChip: {
     flexDirection: 'row',
@@ -1957,16 +2048,18 @@ const styles = StyleSheet.create({
   },
   gatewaySection: {
     backgroundColor: 'white',
-    padding: 12,
-    marginHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+    padding: 16,
+    marginHorizontal: 0,
+    borderRadius: 0,
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
   },
   gatewaySectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   gatewaySectionTitle: {
     fontSize: 15,
@@ -1984,10 +2077,10 @@ const styles = StyleSheet.create({
   },
   gatewayStatusBar: {
     backgroundColor: '#F2F2F7',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    marginBottom: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    marginBottom: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -2016,8 +2109,7 @@ const styles = StyleSheet.create({
   configRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: 4,
   },
   configPlaceholder: {
     flex: 1,
@@ -2056,16 +2148,16 @@ const styles = StyleSheet.create({
   },
   deviceList: {
     flex: 1,
-    padding: 12,
+    padding: 8,
   },
   deviceCard: {
     backgroundColor: 'white',
-    borderRadius: 8,
-    marginBottom: 8,
+    borderRadius: 6,
+    marginBottom: 6,
     overflow: 'hidden',
   },
   deviceMainInfo: {
-    padding: 12,
+    padding: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F2F2F7',
   },
@@ -2084,7 +2176,6 @@ const styles = StyleSheet.create({
   deviceHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   favoriteButton: {
     padding: 4,
@@ -2209,8 +2300,15 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     flexDirection: 'column',
   },
-  qrCamera: {
+  qrCameraContainer: {
     flex: 1,
+    padding: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrCamera: {
+    width: '100%',
+    height: '100%',
   },
   qrTopContent: {
     padding: 20,
@@ -2244,6 +2342,70 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#3C3C43',
     fontFamily: 'monospace',
+  },
+  // FAB Styles
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 80,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    zIndex: 999,
+  },
+  fabIcon: {
+    fontSize: 28,
+    color: 'white',
+    fontWeight: '300',
+  },
+  fabBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 998,
+  },
+  fabMenuContainer: {
+    position: 'absolute',
+    right: 20,
+    bottom: 150,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    overflow: 'hidden',
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    zIndex: 999,
+  },
+  fabMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F2F7',
+    minWidth: 180,
+  },
+  fabMenuIcon: {
+    fontSize: 24,
+    marginRight: 16,
+  },
+  fabMenuText: {
+    fontSize: 16,
+    color: '#000',
+    fontWeight: '500',
   },
 });
 
