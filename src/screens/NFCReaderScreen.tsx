@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import NfcManager, { NfcTech, Ndef, NfcEvents } from 'react-native-nfc-manager';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import NDEFTemplateModal from '../components/NDEFTemplateModal';
 
 interface NFCData {
   id: string;
@@ -24,6 +25,7 @@ const NFCReaderScreen = ({ navigation }: any) => {
   const [isNFCEnabled, setIsNFCEnabled] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [nfcData, setNfcData] = useState<NFCData[]>([]);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Pulse animation for scanning state
@@ -194,6 +196,16 @@ const NFCReaderScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.templatesContainer}>
+        <TouchableOpacity
+          style={[styles.button, styles.templateButton]}
+          onPress={() => setShowTemplateModal(true)}
+          disabled={!isNFCEnabled}>
+          <Icon name="file-document-edit" size={20} color="#FFFFFF" style={{marginRight: 8}} />
+          <Text style={styles.buttonText}>Write from Template</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.infoBox}>
         <View style={{flexDirection: 'row', alignItems: 'center'}}>
           <Icon
@@ -247,6 +259,14 @@ const NFCReaderScreen = ({ navigation }: any) => {
           <Text style={styles.emptyText}>No tags scanned yet</Text>
         )}
       </ScrollView>
+
+      <NDEFTemplateModal
+        visible={showTemplateModal}
+        onClose={() => setShowTemplateModal(false)}
+        onSuccess={() => {
+          // Optionally refresh the scan list or show a success message
+        }}
+      />
     </View>
   );
 };
@@ -297,6 +317,13 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  templatesContainer: {
+    padding: 15,
+    paddingTop: 0,
+  },
+  templateButton: {
+    backgroundColor: '#5AC8FA',
   },
   infoBox: {
     backgroundColor: '#E8F4FF',

@@ -20,6 +20,7 @@ import BleManager, {
 } from 'react-native-ble-manager';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LineChart } from 'react-native-chart-kit';
+import { useFavorites } from '../context/FavoritesContext';
 
 interface ScannedDevice extends Peripheral {
   rssi: number;
@@ -28,13 +29,15 @@ interface ScannedDevice extends Peripheral {
   rssiTimestamps: Date[];
 }
 
-const BLEScannerScreen = () => {
+const BLEScannerScreen = ({ navigation }: any) => {
+  const { favorites, toggleFavorite, isFavorite } = useFavorites();
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Map<string, ScannedDevice>>(new Map());
   const [nameFilter, setNameFilter] = useState('');
   const [rssiFilter, setRssiFilter] = useState('-100');
   const [addressFilter, setAddressFilter] = useState('');
   const [showOnlyNamed, setShowOnlyNamed] = useState(false);
+  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
@@ -365,16 +368,12 @@ const BLEScannerScreen = () => {
     }
   }, [gatewayEnabled, gatewayInterval, postToGateway]);
 
-  const connectToDevice = async (deviceId: string) => {
-    try {
-      await BleManager.connect(deviceId);
-      Alert.alert('Connected', `Connected to device ${deviceId}`);
-      const peripheralInfo = await BleManager.retrieveServices(deviceId);
-      console.log('Peripheral info:', peripheralInfo);
-    } catch (error) {
-      console.error('Connection error:', error);
-      Alert.alert('Error', 'Failed to connect to device');
-    }
+  const connectToDevice = (device: ScannedDevice) => {
+    // Navigate to GATT Browser
+    navigation.navigate('GATTBrowser', {
+      deviceId: device.id,
+      deviceName: device.name || 'Unknown Device',
+    });
   };
 
   const filterDevices = () => {
@@ -396,6 +395,10 @@ const BLEScannerScreen = () => {
       }
 
       if (showOnlyNamed && !device.name) {
+        return false;
+      }
+
+      if (showOnlyFavorites && !isFavorite(device.id)) {
         return false;
       }
 
@@ -772,6 +775,18 @@ const BLEScannerScreen = () => {
             />
           </View>
         </View>
+
+        <View style={[styles.filterRow, {justifyContent: 'flex-end'}]}>
+          <View style={styles.switchContainer}>
+            <Icon name="star" size={16} color="#FF9500" style={{marginRight: 4}} />
+            <Text style={styles.switchLabel}>Favorites only</Text>
+            <Switch
+              value={showOnlyFavorites}
+              onValueChange={setShowOnlyFavorites}
+              trackColor={{false: '#767577', true: '#FF9500'}}
+            />
+          </View>
+        </View>
       </View>
 
       <View style={styles.gatewaySection}>
@@ -861,7 +876,7 @@ const BLEScannerScreen = () => {
           <View key={device.id} style={styles.deviceCard}>
             <TouchableOpacity
               style={styles.deviceMainInfo}
-              onPress={() => connectToDevice(device.id)}>
+              onPress={() => connectToDevice(device)}>
               <View style={styles.deviceRow}>
                 <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
                   <Icon
@@ -875,6 +890,23 @@ const BLEScannerScreen = () => {
                   </Text>
                 </View>
                 <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      toggleFavorite({
+                        id: device.id,
+                        name: device.name || 'Unknown Device',
+                        type: 'ble',
+                        addedAt: Date.now(),
+                      });
+                    }}
+                    style={{marginRight: 8}}>
+                    <Icon
+                      name={isFavorite(device.id) ? "star" : "star-outline"}
+                      size={20}
+                      color="#FF9500"
+                    />
+                  </TouchableOpacity>
                   <Icon
                     name="signal"
                     size={16}

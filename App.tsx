@@ -6,8 +6,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import NFCReaderScreen from './src/screens/NFCReaderScreen';
 import BLEScannerScreen from './src/screens/BLEScannerScreen';
 import NFCTagDetailScreen from './src/screens/NFCTagDetailScreen';
+import GATTBrowserScreen from './src/screens/GATTBrowserScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { FavoritesProvider } from './src/context/FavoritesContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const Tab = createBottomTabNavigator();
@@ -28,6 +30,27 @@ function NFCStack() {
         component={NFCTagDetailScreen}
         options={{
           headerTitle: 'Tag Memory Editor',
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
+
+function BLEStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen
+        name="BLEScanner"
+        component={BLEScannerScreen}
+        options={{
+          headerTitle: 'Mikrod Util - BLE Scanner',
+        }}
+      />
+      <Stack.Screen
+        name="GATTBrowser"
+        component={GATTBrowserScreen}
+        options={{
+          headerTitle: 'GATT Services',
         }}
       />
     </Stack.Navigator>
@@ -60,14 +83,12 @@ function TabNavigator() {
       />
       <Tab.Screen
         name="BLE"
-        component={BLEScannerScreen}
+        component={BLEStack}
         options={{
           tabBarLabel: 'BLE',
           tabBarIcon: ({ color, size }) => (
             <Icon name="bluetooth" size={size} color={color} />
           ),
-          headerShown: true,
-          headerTitle: 'Mikrod Util - BLE Scanner',
         }}
       />
       <Tab.Screen
@@ -89,11 +110,13 @@ function TabNavigator() {
 function App() {
   return (
     <ThemeProvider>
-      <SafeAreaProvider>
-        <NavigationContainer>
-          <TabNavigator />
-        </NavigationContainer>
-      </SafeAreaProvider>
+      <FavoritesProvider>
+        <SafeAreaProvider>
+          <NavigationContainer>
+            <TabNavigator />
+          </NavigationContainer>
+        </SafeAreaProvider>
+      </FavoritesProvider>
     </ThemeProvider>
   );
 }
