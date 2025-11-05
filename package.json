@@ -5,6 +5,9 @@
   "scripts": {
     "android": "react-native run-android",
     "ios": "react-native run-ios",
+    "ios:build": "./scripts/build-ios.sh",
+    "ios:build:device": "./scripts/build-ios.sh release device",
+    "ios:pods": "cd ios && bundle exec pod install && cd ..",
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest"
