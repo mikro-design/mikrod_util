@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,14 @@ import {
   Platform,
 } from 'react-native';
 import { useTheme, ThemeMode } from '../context/ThemeContext';
+import { useFavorites } from '../context/FavoritesContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import ExportImportModal from '../components/ExportImportModal';
 
 const SettingsScreen = () => {
   const { theme, themeMode, setThemeMode, isDark } = useTheme();
+  const { favorites } = useFavorites();
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const themeOptions: { mode: ThemeMode; label: string; icon: string }[] = [
     { mode: 'light', label: 'Light', icon: 'white-balance-sunny' },
@@ -58,6 +62,50 @@ const SettingsScreen = () => {
               )}
             </TouchableOpacity>
           ))}
+        </View>
+
+        {/* Data Management Section */}
+        <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
+          <View style={styles.sectionHeader}>
+            <Icon name="database" size={20} color={theme.colors.primary} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+              Data Management
+            </Text>
+          </View>
+          <Text style={[styles.sectionDescription, { color: theme.colors.textSecondary }]}>
+            Export, import, and manage your data
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.themeOption, { borderBottomColor: theme.colors.border }]}
+            onPress={() => setShowExportModal(true)}>
+            <View style={styles.themeOptionContent}>
+              <Icon name="export" size={24} color={theme.colors.success} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.optionTitle, { color: theme.colors.text }]}>
+                  Export / Import
+                </Text>
+                <Text style={[styles.optionSubtitle, { color: theme.colors.textSecondary }]}>
+                  Backup and restore your data
+                </Text>
+              </View>
+            </View>
+            <Icon name="chevron-right" size={24} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+
+          <View style={[styles.themeOption, { borderBottomWidth: 0 }]}>
+            <View style={styles.themeOptionContent}>
+              <Icon name="star" size={24} color="#FF9500" style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.optionTitle, { color: theme.colors.text }]}>
+                  Favorites
+                </Text>
+                <Text style={[styles.optionSubtitle, { color: theme.colors.textSecondary }]}>
+                  {favorites.length} saved devices
+                </Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* App Info Section */}
@@ -144,6 +192,13 @@ const SettingsScreen = () => {
           </View>
         </View>
       </ScrollView>
+
+      <ExportImportModal
+        visible={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        scanData={[]}
+        dataType="ble"
+      />
     </View>
   );
 };
@@ -199,6 +254,14 @@ const styles = StyleSheet.create({
   },
   themeOptionLabel: {
     fontSize: 16,
+  },
+  optionTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  optionSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
   },
   infoRow: {
     flexDirection: 'row',

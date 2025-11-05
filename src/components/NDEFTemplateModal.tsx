@@ -12,6 +12,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
 import NfcManager, { NfcTech, Ndef } from 'react-native-nfc-manager';
+import BatchNFCModal from './BatchNFCModal';
 
 interface NDEFTemplateModalProps {
   visible: boolean;
@@ -41,6 +42,7 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
   const { theme } = useTheme();
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateType | null>(null);
   const [isWriting, setIsWriting] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
 
   // Form values
   const [url, setUrl] = useState('https://');
@@ -334,14 +336,42 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
                   disabled={isWriting}>
                   <Icon name="nfc" size={20} color="white" style={{ marginRight: 8 }} />
                   <Text style={styles.writeButtonText}>
-                    {isWriting ? 'Writing...' : 'Write to Tag'}
+                    {isWriting ? 'Writing...' : 'Write Single Tag'}
                   </Text>
                 </TouchableOpacity>
+
+                {/* Batch Write Button (only for URL and Text) */}
+                {(selectedTemplate === 'url' || selectedTemplate === 'text') && (
+                  <TouchableOpacity
+                    style={[styles.batchButton, { backgroundColor: theme.colors.warning }]}
+                    onPress={() => {
+                      const baseData = selectedTemplate === 'url' ? url : text;
+                      if (!baseData || baseData === 'https://') {
+                        Alert.alert('Invalid Data', 'Please enter valid data first');
+                        return;
+                      }
+                      setShowBatchModal(true);
+                    }}
+                    disabled={isWriting}>
+                    <Icon name="layers-triple" size={20} color="white" style={{ marginRight: 8 }} />
+                    <Text style={styles.writeButtonText}>
+                      Batch Write Multiple Tags
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </ScrollView>
         </View>
       </View>
+
+      {/* Batch NFC Modal */}
+      <BatchNFCModal
+        visible={showBatchModal}
+        onClose={() => setShowBatchModal(false)}
+        templateType={selectedTemplate as 'url' | 'text'}
+        baseData={selectedTemplate === 'url' ? url : text}
+      />
     </Modal>
   );
 };
@@ -437,6 +467,14 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginTop: 24,
+  },
+  batchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 12,
   },
   writeButtonText: {
     color: 'white',
