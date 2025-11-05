@@ -30,7 +30,7 @@ interface ScannedDevice extends Peripheral {
 }
 
 const BLEScannerScreen = ({ navigation }: any) => {
-  const { favorites, toggleFavorite, isFavorite } = useFavorites();
+  const { toggleFavorite, isFavorite } = useFavorites();
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Map<string, ScannedDevice>>(new Map());
   const [nameFilter, setNameFilter] = useState('');
@@ -264,7 +264,7 @@ const BLEScannerScreen = ({ navigation }: any) => {
     return data;
   };
 
-  const cleanAdvertisingData = (advertising: any): any => {
+  const cleanAdvertisingData = useCallback((advertising: any): any => {
     if (!advertising) return advertising;
 
     const cleaned: any = {};
@@ -300,7 +300,7 @@ const BLEScannerScreen = ({ navigation }: any) => {
     }
 
     return cleaned;
-  };
+  }, []);
 
   const postToGateway = useCallback(async () => {
     if (!gatewayEnabled || !gatewayUrl) {
@@ -333,14 +333,14 @@ const BLEScannerScreen = ({ navigation }: any) => {
       console.error('Gateway post error:', error);
       setGatewayError(error instanceof Error ? error.message : 'Network error');
     }
-  }, [gatewayEnabled, gatewayUrl, devices]);
+  }, [gatewayEnabled, gatewayUrl, devices, cleanAdvertisingData]);
 
   useEffect(() => {
     if (gatewayEnabled) {
       // Post immediately when enabled
       postToGateway();
 
-      const interval = parseInt(gatewayInterval) || 10;
+      const interval = parseInt(gatewayInterval, 10) || 10;
       setNextPostIn(interval);
 
       // Countdown timer
@@ -377,7 +377,7 @@ const BLEScannerScreen = ({ navigation }: any) => {
   };
 
   const filterDevices = () => {
-    const rssiThreshold = parseInt(rssiFilter) || -100;
+    const rssiThreshold = parseInt(rssiFilter, 10) || -100;
 
     return Array.from(devices.values()).filter(device => {
       if (device.rssi < rssiThreshold) return false;

@@ -8,7 +8,6 @@ import {
   ScrollView,
   Alert,
   TextInput,
-  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
@@ -39,7 +38,7 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
   const shouldContinue = useRef(true);
 
   const startBatchWrite = async () => {
-    const count = parseInt(batchCount) || 5;
+    const count = parseInt(batchCount, 10) || 5;
     setTotalCount(count);
     setCurrentCount(0);
     setWrittenTags([]);
@@ -66,7 +65,7 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
 
         // Add sequential number if enabled
         if (useSequentialNumbers) {
-          const seqNum = (parseInt(startNumber) || 1) + i;
+          const seqNum = (parseInt(startNumber, 10) || 1) + i;
           if (templateType === 'url') {
             dataToWrite = `${baseData}?id=${seqNum}`;
           } else if (templateType === 'text') {

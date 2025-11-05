@@ -13,7 +13,6 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
 import { useFavorites } from '../context/FavoritesContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface ExportImportModalProps {
   visible: boolean;

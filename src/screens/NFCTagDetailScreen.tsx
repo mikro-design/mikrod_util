@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
-import Clipboard from '@react-native-clipboard/clipboard';
 import NfcManager, { NfcTech } from 'react-native-nfc-manager';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -275,61 +274,6 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
       setIsWriting(false);
       Alert.alert('Write Error', `Failed: ${error.message || 'Unknown error'}`);
     }
-  };
-
-  const formatHexWithLineNumbers = (hex: string) => {
-    // Parse all hex bytes
-    const allBytes = hex.split(/\s+/).filter(h => h.length > 0);
-    const result: string[] = [];
-
-    for (let i = 0; i < allBytes.length; i += bytesPerRow) {
-      const lineBytes = allBytes.slice(i, i + bytesPerRow);
-      const address = ((parseInt(startBlock) || 0) * 4 + i).toString(16).padStart(4, '0').toUpperCase();
-      const hexLine = lineBytes.map(b => b.toUpperCase()).join(' ');
-      result.push(`${address}  ${hexLine}`);
-    }
-
-    return result.join('\n');
-  };
-
-  const hexToAscii = (hexString: string): string => {
-    const lines = hexString.split('\n');
-    return lines.map(line => {
-      const bytes = line.split(/\s+/).filter(h => h.length > 0);
-      return bytes.map(hex => {
-        const byte = parseInt(hex, 16);
-        // Display printable ASCII characters, otherwise show '.'
-        return (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
-      }).join('');
-    }).join('\n');
-  };
-
-  const formatHexWithAscii = (hex: string): string => {
-    // Parse all hex bytes
-    const allBytes = hex.split(/\s+/).filter(h => h.length > 0);
-    const result: string[] = [];
-
-    for (let i = 0; i < allBytes.length; i += bytesPerRow) {
-      const lineBytes = allBytes.slice(i, i + bytesPerRow);
-      const address = ((parseInt(startBlock) || 0) * 4 + i).toString(16).padStart(4, '0').toUpperCase();
-      // 16 bytes hex = "XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX" = 47 chars
-      const hexLine = lineBytes.map(b => b.toUpperCase()).join(' ').padEnd(bytesPerRow * 3 - 1, ' ');
-      const ascii = lineBytes.map(h => {
-        const byte = parseInt(h, 16);
-        return (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
-      }).join('');
-      result.push(`${address}  ${hexLine}  ${ascii}`);
-    }
-
-    return result.join('\n');
-  };
-
-  const copyToClipboard = () => {
-    const dataWithLineNumbers = showAscii
-      ? formatHexWithAscii(memoryData)
-      : formatHexWithLineNumbers(memoryData);
-    Clipboard.setString(dataWithLineNumbers);
-    Alert.alert('Copied', 'Memory data copied to clipboard');
   };
 
   return (
@@ -628,7 +572,7 @@ const styles = StyleSheet.create({
     gap: 12,
     alignItems: 'center',
   },
-  toggleButton: {
+  toggleButtonText: {
     color: '#FF9500',
     fontSize: 14,
     marginRight: 12,

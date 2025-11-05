@@ -67,6 +67,7 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
         BleManager.disconnect(deviceId).catch(() => {});
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
 
   const connectAndDiscover = async () => {

@@ -6,10 +6,9 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Platform,
   Animated,
 } from 'react-native';
-import NfcManager, { NfcTech, Ndef, NfcEvents } from 'react-native-nfc-manager';
+import NfcManager, { NfcTech, Ndef } from 'react-native-nfc-manager';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import NDEFTemplateModal from '../components/NDEFTemplateModal';
 
