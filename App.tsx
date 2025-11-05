@@ -3,10 +3,12 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Text } from 'react-native';
 import NFCReaderScreen from './src/screens/NFCReaderScreen';
 import BLEScannerScreen from './src/screens/BLEScannerScreen';
 import NFCTagDetailScreen from './src/screens/NFCTagDetailScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -32,41 +34,67 @@ function NFCStack() {
   );
 }
 
+function TabNavigator() {
+  const { theme } = useTheme();
+
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.textSecondary,
+        tabBarStyle: {
+          backgroundColor: theme.colors.card,
+          borderTopColor: theme.colors.border,
+        },
+        headerShown: false,
+      }}>
+      <Tab.Screen
+        name="NFC"
+        component={NFCStack}
+        options={{
+          tabBarLabel: 'NFC',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="nfc" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="BLE"
+        component={BLEScannerScreen}
+        options={{
+          tabBarLabel: 'BLE',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="bluetooth" size={size} color={color} />
+          ),
+          headerShown: true,
+          headerTitle: 'Mikrod Util - BLE Scanner',
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          tabBarLabel: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="cog" size={size} color={color} />
+          ),
+          headerShown: true,
+          headerTitle: 'Settings',
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
 function App() {
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <Tab.Navigator
-          screenOptions={{
-            tabBarActiveTintColor: '#007AFF',
-            tabBarInactiveTintColor: '#8E8E93',
-            headerShown: false,
-          }}>
-          <Tab.Screen
-            name="NFC"
-            component={NFCStack}
-            options={{
-              tabBarLabel: 'NFC',
-              tabBarIcon: ({ color, size }) => (
-                <Text style={{ fontSize: size, color }}>📡</Text>
-              ),
-            }}
-          />
-          <Tab.Screen
-            name="BLE"
-            component={BLEScannerScreen}
-            options={{
-              tabBarLabel: 'BLE',
-              tabBarIcon: ({ color, size }) => (
-                <Text style={{ fontSize: size, color }}>📶</Text>
-              ),
-              headerShown: true,
-              headerTitle: 'Mikrod Util - BLE Scanner',
-            }}
-          />
-        </Tab.Navigator>
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <ThemeProvider>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <TabNavigator />
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </ThemeProvider>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,10 @@ import {
   ScrollView,
   Alert,
   Platform,
+  Animated,
 } from 'react-native';
 import NfcManager, { NfcTech, Ndef, NfcEvents } from 'react-native-nfc-manager';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 interface NFCData {
   id: string;
@@ -22,6 +24,29 @@ const NFCReaderScreen = ({ navigation }: any) => {
   const [isNFCEnabled, setIsNFCEnabled] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [nfcData, setNfcData] = useState<NFCData[]>([]);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Pulse animation for scanning state
+  useEffect(() => {
+    if (isScanning) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isScanning, pulseAnim]);
 
   useEffect(() => {
     const initNFC = async () => {
@@ -124,10 +149,20 @@ const NFCReaderScreen = ({ navigation }: any) => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerText}>NFC Tag Reader</Text>
-        <Text style={styles.statusText}>
-          Status: {isNFCEnabled ? '✓ Enabled' : '✗ Disabled'}
-        </Text>
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+          <Icon name="nfc" size={28} color="white" />
+          <Text style={styles.headerText}>NFC Tag Reader</Text>
+        </View>
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+          <Icon
+            name={isNFCEnabled ? "check-circle" : "close-circle"}
+            size={16}
+            color={isNFCEnabled ? "#34C759" : "#FF3B30"}
+          />
+          <Text style={styles.statusText}>
+            {isNFCEnabled ? 'Enabled' : 'Disabled'}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.controls}>
@@ -135,6 +170,16 @@ const NFCReaderScreen = ({ navigation }: any) => {
           style={[styles.button, isScanning && styles.buttonDisabled]}
           onPress={startNFCScan}
           disabled={isScanning || !isNFCEnabled}>
+          {isScanning ? (
+            <Animated.View style={{
+              marginRight: 8,
+              transform: [{ scale: pulseAnim }],
+            }}>
+              <Icon name="nfc-search-variant" size={20} color="#FFFFFF" />
+            </Animated.View>
+          ) : (
+            <Icon name="nfc-tap" size={20} color="#FFFFFF" style={{marginRight: 8}} />
+          )}
           <Text style={styles.buttonText}>
             {isScanning ? 'Scanning...' : 'Scan NFC Tag'}
           </Text>
@@ -144,25 +189,37 @@ const NFCReaderScreen = ({ navigation }: any) => {
           style={[styles.button, styles.clearButton]}
           onPress={clearHistory}
           disabled={nfcData.length === 0}>
+          <Icon name="delete-sweep" size={20} color="#FFFFFF" style={{marginRight: 8}} />
           <Text style={styles.buttonText}>Clear History</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.infoBox}>
-        <Text style={styles.infoText}>
-          {isScanning
-            ? '📱 Bring NFC tag near phone now...'
-            : '👆 Tap "Scan NFC Tag" then bring tag near phone (remove first if already near)'}
-        </Text>
+        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+          <Icon
+            name={isScanning ? "cellphone-nfc" : "hand-pointing-up"}
+            size={20}
+            color="#007AFF"
+            style={{marginRight: 8}}
+          />
+          <Text style={styles.infoText}>
+            {isScanning
+              ? 'Bring NFC tag near phone now...'
+              : 'Tap "Scan NFC Tag" then bring tag near phone (remove first if already near)'}
+          </Text>
+        </View>
       </View>
 
       <ScrollView style={styles.history}>
         <Text style={styles.historyTitle}>
           History ({nfcData.length} tags read)
         </Text>
-        <Text style={styles.infoHint}>
-          💡 Tap any tag to view/edit memory
-        </Text>
+        <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
+          <Icon name="lightbulb-on-outline" size={16} color="#FF9500" style={{marginRight: 4}} />
+          <Text style={styles.infoHint}>
+            Tap any tag to view/edit memory
+          </Text>
+        </View>
         {nfcData.map((tag, index) => (
           <TouchableOpacity
             key={`${tag.id}-${index}`}
@@ -202,6 +259,8 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#007AFF',
     padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   headerText: {
@@ -212,7 +271,6 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 14,
     color: 'white',
-    marginTop: 5,
   },
   controls: {
     padding: 15,
@@ -225,7 +283,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     flex: 1,
     marginHorizontal: 5,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
     backgroundColor: '#8E8E93',
@@ -249,6 +309,7 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 14,
     color: '#333',
+    flex: 1,
   },
   history: {
     flex: 1,

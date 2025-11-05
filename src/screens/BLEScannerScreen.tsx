@@ -11,15 +11,21 @@ import {
   Platform,
   Switch,
   RefreshControl,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import KeepAwake from '@sayem314/react-native-keep-awake';
 import BleManager, {
   Peripheral,
 } from 'react-native-ble-manager';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { LineChart } from 'react-native-chart-kit';
 
 interface ScannedDevice extends Peripheral {
   rssi: number;
   lastSeen: Date;
+  rssiHistory: number[];
+  rssiTimestamps: Date[];
 }
 
 const BLEScannerScreen = () => {
@@ -41,14 +47,33 @@ const BLEScannerScreen = () => {
   const scanningRef = useRef(false);
   const autoRestartRef = useRef(false);
   const gatewayIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const rotateAnim = useRef(new Animated.Value(0)).current;
 
   const handleDiscoverPeripheral = useCallback((peripheral: Peripheral) => {
     setDevices(prevDevices => {
       const newDevices = new Map(prevDevices);
+      const existingDevice = prevDevices.get(peripheral.id);
+      const rssi = peripheral.rssi || -100;
+      const now = new Date();
+
+      // Keep last 20 RSSI readings for the graph
+      const rssiHistory = existingDevice?.rssiHistory || [];
+      const rssiTimestamps = existingDevice?.rssiTimestamps || [];
+
+      rssiHistory.push(rssi);
+      rssiTimestamps.push(now);
+
+      if (rssiHistory.length > 20) {
+        rssiHistory.shift();
+        rssiTimestamps.shift();
+      }
+
       const device: ScannedDevice = {
         ...peripheral,
-        rssi: peripheral.rssi || -100,
-        lastSeen: new Date(),
+        rssi,
+        lastSeen: now,
+        rssiHistory,
+        rssiTimestamps,
       };
       newDevices.set(peripheral.id, device);
       return newDevices;
@@ -140,6 +165,21 @@ const BLEScannerScreen = () => {
       }
     };
   }, [handleDiscoverPeripheral]);
+
+  // Scanning animation effect
+  useEffect(() => {
+    if (isScanning) {
+      Animated.loop(
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      rotateAnim.setValue(0);
+    }
+  }, [isScanning, rotateAnim]);
 
   const startScan = async () => {
     if (!permissionsGranted) {
@@ -641,10 +681,27 @@ const BLEScannerScreen = () => {
     <View style={styles.container}>
       {gatewayEnabled && <KeepAwake />}
       <View style={styles.header}>
-        <Text style={styles.headerText}>BLE Scanner</Text>
-        <Text style={styles.statusText}>
-          {isScanning ? 'Scanning...' : `${filteredDevices.length} devices`}
-        </Text>
+        <View style={styles.headerTitleRow}>
+          <Icon name="bluetooth" size={28} color="#007AFF" />
+          <Text style={styles.headerText}>BLE Scanner</Text>
+        </View>
+        <View style={styles.statusRow}>
+          {isScanning && (
+            <Animated.View style={{
+              transform: [{
+                rotate: rotateAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0deg', '360deg'],
+                }),
+              }],
+            }}>
+              <Icon name="radar" size={20} color="#007AFF" />
+            </Animated.View>
+          )}
+          <Text style={styles.statusText}>
+            {isScanning ? 'Scanning...' : `${filteredDevices.length} devices`}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.controls}>
@@ -653,6 +710,12 @@ const BLEScannerScreen = () => {
             style={[styles.button, styles.primaryButton, isScanning && styles.stopButton]}
             onPress={isScanning ? stopScan : startScan}
             disabled={!permissionsGranted}>
+            <Icon
+              name={isScanning ? "stop" : "play"}
+              size={18}
+              color="#FFFFFF"
+              style={{marginRight: 8}}
+            />
             <Text style={styles.buttonText}>
               {isScanning ? 'STOP SCAN' : 'START SCAN'}
             </Text>
@@ -660,6 +723,12 @@ const BLEScannerScreen = () => {
           <TouchableOpacity
             style={[styles.button, styles.secondaryButton]}
             onPress={clearList}>
+            <Icon
+              name="delete-sweep"
+              size={18}
+              color="#FFFFFF"
+              style={{marginRight: 8}}
+            />
             <Text style={styles.buttonText}>
               CLEAR LIST
             </Text>
@@ -720,24 +789,36 @@ const BLEScannerScreen = () => {
             <View style={styles.gatewayStatusBar}>
               {lastGatewayPost ? (
                 <View>
-                  <Text style={styles.gatewayStatusText}>
-                    ✓ Last posted: {lastGatewayPost.toLocaleTimeString()}
-                  </Text>
-                  {nextPostIn !== null && (
-                    <Text style={styles.gatewayNextText}>
-                      Next in {nextPostIn}s
+                  <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                    <Icon name="check-circle" size={16} color="#34C759" style={{marginRight: 4}} />
+                    <Text style={styles.gatewayStatusText}>
+                      Last posted: {lastGatewayPost.toLocaleTimeString()}
                     </Text>
+                  </View>
+                  {nextPostIn !== null && (
+                    <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 2}}>
+                      <Icon name="clock-outline" size={14} color="#666" style={{marginRight: 4}} />
+                      <Text style={styles.gatewayNextText}>
+                        Next in {nextPostIn}s
+                      </Text>
+                    </View>
                   )}
                 </View>
               ) : (
-                <Text style={styles.gatewayWaitingText}>
-                  {nextPostIn !== null ? `Sending in ${nextPostIn}s...` : 'Initializing...'}
-                </Text>
+                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                  <Icon name="wifi-sync" size={16} color="#007AFF" style={{marginRight: 4}} />
+                  <Text style={styles.gatewayWaitingText}>
+                    {nextPostIn !== null ? `Sending in ${nextPostIn}s...` : 'Initializing...'}
+                  </Text>
+                </View>
               )}
               {gatewayError && (
-                <Text style={styles.gatewayErrorText}>
-                  ✗ {gatewayError}
-                </Text>
+                <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 4}}>
+                  <Icon name="alert-circle" size={16} color="#FF3B30" style={{marginRight: 4}} />
+                  <Text style={styles.gatewayErrorText}>
+                    {gatewayError}
+                  </Text>
+                </View>
               )}
             </View>
 
@@ -782,16 +863,32 @@ const BLEScannerScreen = () => {
               style={styles.deviceMainInfo}
               onPress={() => connectToDevice(device.id)}>
               <View style={styles.deviceRow}>
-                <Text style={styles.deviceName}>
-                  {device.name || 'Unknown Device'}
-                </Text>
-                <Text style={[
-                  styles.rssi,
-                  device.rssi > -70 ? styles.rssiGood :
-                  device.rssi > -85 ? styles.rssiMedium : styles.rssiBad
-                ]}>
-                  {device.rssi}
-                </Text>
+                <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                  <Icon
+                    name="bluetooth-connect"
+                    size={24}
+                    color={device.rssi > -70 ? '#34C759' : device.rssi > -85 ? '#FF9500' : '#666'}
+                    style={{marginRight: 8}}
+                  />
+                  <Text style={styles.deviceName}>
+                    {device.name || 'Unknown Device'}
+                  </Text>
+                </View>
+                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                  <Icon
+                    name="signal"
+                    size={16}
+                    color={device.rssi > -70 ? '#34C759' : device.rssi > -85 ? '#FF9500' : '#FF3B30'}
+                    style={{marginRight: 4}}
+                  />
+                  <Text style={[
+                    styles.rssi,
+                    device.rssi > -70 ? styles.rssiGood :
+                    device.rssi > -85 ? styles.rssiMedium : styles.rssiBad
+                  ]}>
+                    {device.rssi}
+                  </Text>
+                </View>
               </View>
               <View style={styles.deviceInfoRow}>
                 <Text style={styles.deviceInfoLabel}>Address: </Text>
@@ -804,6 +901,62 @@ const BLEScannerScreen = () => {
                 </Text>
               </View>
             </TouchableOpacity>
+
+            {/* RSSI Signal Strength Graph */}
+            {device.rssiHistory && device.rssiHistory.length > 1 && (
+              <View style={styles.rssiGraphSection}>
+                <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
+                  <Icon name="chart-line" size={16} color="#666" style={{marginRight: 4}} />
+                  <Text style={styles.graphTitle}>Signal Strength</Text>
+                </View>
+                <LineChart
+                  data={{
+                    labels: [],
+                    datasets: [{
+                      data: device.rssiHistory.length > 0 ? device.rssiHistory : [-100],
+                    }],
+                  }}
+                  width={Dimensions.get('window').width - 60}
+                  height={120}
+                  chartConfig={{
+                    backgroundColor: '#FFFFFF',
+                    backgroundGradientFrom: '#FFFFFF',
+                    backgroundGradientTo: '#FFFFFF',
+                    decimalPlaces: 0,
+                    color: (opacity = 1) => {
+                      const avgRssi = device.rssiHistory.reduce((a, b) => a + b, 0) / device.rssiHistory.length;
+                      if (avgRssi > -70) return `rgba(52, 199, 89, ${opacity})`; // green
+                      if (avgRssi > -85) return `rgba(255, 149, 0, ${opacity})`; // orange
+                      return `rgba(255, 59, 48, ${opacity})`; // red
+                    },
+                    labelColor: () => '#666',
+                    style: {
+                      borderRadius: 8,
+                    },
+                    propsForBackgroundLines: {
+                      strokeDasharray: '',
+                      stroke: '#E0E0E0',
+                      strokeWidth: 1,
+                    },
+                  }}
+                  bezier
+                  style={{
+                    marginVertical: 8,
+                    borderRadius: 8,
+                  }}
+                  withInnerLines={true}
+                  withOuterLines={true}
+                  withVerticalLines={false}
+                  withHorizontalLines={true}
+                  withDots={false}
+                  withShadow={false}
+                  segments={3}
+                />
+                <Text style={styles.graphHint}>
+                  Last {device.rssiHistory.length} readings • Range: {Math.min(...device.rssiHistory)} to {Math.max(...device.rssiHistory)} dBm
+                </Text>
+              </View>
+            )}
 
             <View style={styles.advertisingDataSection}>
               {renderDeviceAdvertising(device)}
@@ -834,10 +987,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   headerText: {
     fontSize: 18,
     fontWeight: '600',
     color: 'white',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   statusText: {
     fontSize: 14,
@@ -853,7 +1016,9 @@ const styles = StyleSheet.create({
   button: {
     padding: 14,
     borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryButton: {
     backgroundColor: '#007AFF',
@@ -1103,6 +1268,22 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontSize: 14,
     marginTop: 40,
+  },
+  rssiGraphSection: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F2F7',
+  },
+  graphTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+  },
+  graphHint: {
+    fontSize: 11,
+    color: '#8E8E93',
+    textAlign: 'center',
+    marginTop: 4,
   },
 });
 

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import NfcManager, { NfcTech } from 'react-native-nfc-manager';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 interface NFCTagDetailScreenProps {
   route: {
@@ -401,9 +402,17 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
       {memoryData && (
         <View style={styles.editorSection}>
           <View style={styles.hexInfo}>
-            <Text style={styles.hexInfoText}>
-              {getBytes().length} bytes | {bytesPerRow} bytes/row | Offset: 0x{((parseInt(startBlock) || 0) * 4).toString(16).toUpperCase()} {hasChanges && '| ⚠️ Modified'}
-            </Text>
+            <View style={{flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap'}}>
+              <Text style={styles.hexInfoText}>
+                {getBytes().length} bytes | {bytesPerRow} bytes/row | Offset: 0x{((parseInt(startBlock) || 0) * 4).toString(16).toUpperCase()}
+              </Text>
+              {hasChanges && (
+                <View style={{flexDirection: 'row', alignItems: 'center', marginLeft: 8}}>
+                  <Icon name="alert" size={14} color="#FF9500" style={{marginRight: 2}} />
+                  <Text style={[styles.hexInfoText, {color: '#FF9500'}]}>Modified</Text>
+                </View>
+              )}
+            </View>
           </View>
 
           <ScrollView style={styles.hexEditor}>
@@ -491,8 +500,9 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
 
       {!memoryData && !isReading && (
         <View style={styles.emptyState}>
+          <Icon name="cellphone-nfc" size={48} color="#999" style={{marginBottom: 16}} />
           <Text style={styles.emptyText}>
-            📱 Hold your phone near the NFC tag and tap "Read Memory" to view its contents
+            Hold your phone near the NFC tag and tap "Read Memory" to view its contents
           </Text>
         </View>
       )}
