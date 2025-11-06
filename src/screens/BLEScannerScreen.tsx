@@ -15,9 +15,7 @@ import {
   Dimensions,
 } from 'react-native';
 import KeepAwake from '@sayem314/react-native-keep-awake';
-import BleManager, {
-  Peripheral,
-} from 'react-native-ble-manager';
+import BleManager, { Peripheral } from 'react-native-ble-manager';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LineChart } from 'react-native-chart-kit';
 import { useFavorites } from '../context/FavoritesContext';
@@ -42,7 +40,9 @@ const BLEScannerScreen = ({ navigation }: any) => {
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [gatewayEnabled, setGatewayEnabled] = useState(false);
-  const [gatewayUrl, setGatewayUrl] = useState('http://192.168.1.100:8080/api/ble');
+  const [gatewayUrl, setGatewayUrl] = useState(
+    'http://192.168.1.100:8080/api/ble',
+  );
   const [gatewayInterval, setGatewayInterval] = useState('10');
   const [lastGatewayPost, setLastGatewayPost] = useState<Date | null>(null);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
@@ -94,11 +94,14 @@ const BLEScannerScreen = ({ navigation }: any) => {
           ]);
 
           const allGranted = Object.values(granted).every(
-            status => status === PermissionsAndroid.RESULTS.GRANTED
+            status => status === PermissionsAndroid.RESULTS.GRANTED,
           );
 
           if (!allGranted) {
-            Alert.alert('Permissions Required', 'BLE permissions are needed to scan for devices');
+            Alert.alert(
+              'Permissions Required',
+              'BLE permissions are needed to scan for devices',
+            );
             setPermissionsGranted(false);
             return;
           }
@@ -116,7 +119,9 @@ const BLEScannerScreen = ({ navigation }: any) => {
 
     requestPermissions();
 
-    const discoverListener = BleManager.onDiscoverPeripheral(handleDiscoverPeripheral);
+    const discoverListener = BleManager.onDiscoverPeripheral(
+      handleDiscoverPeripheral,
+    );
     const stopScanListener = BleManager.onStopScan(() => {
       console.log('BLE scan stopped, autoRestart:', autoRestartRef.current);
       setIsScanning(false);
@@ -177,7 +182,7 @@ const BLEScannerScreen = ({ navigation }: any) => {
           toValue: 1,
           duration: 2000,
           useNativeDriver: true,
-        })
+        }),
       ).start();
     } else {
       rotateAnim.setValue(0);
@@ -186,7 +191,10 @@ const BLEScannerScreen = ({ navigation }: any) => {
 
   const startScan = async () => {
     if (!permissionsGranted) {
-      Alert.alert('Permissions Required', 'Please grant BLE permissions to scan');
+      Alert.alert(
+        'Permissions Required',
+        'Please grant BLE permissions to scan',
+      );
       return;
     }
 
@@ -271,10 +279,13 @@ const BLEScannerScreen = ({ navigation }: any) => {
 
     // Clean each field
     if (advertising.localName) cleaned.localName = advertising.localName;
-    if (advertising.txPowerLevel !== undefined) cleaned.txPowerLevel = advertising.txPowerLevel;
+    if (advertising.txPowerLevel !== undefined)
+      cleaned.txPowerLevel = advertising.txPowerLevel;
 
     if (advertising.manufacturerData) {
-      cleaned.manufacturerData = trimTrailingZeros(advertising.manufacturerData);
+      cleaned.manufacturerData = trimTrailingZeros(
+        advertising.manufacturerData,
+      );
     }
 
     if (advertising.serviceUUIDs) {
@@ -285,7 +296,7 @@ const BLEScannerScreen = ({ navigation }: any) => {
       if (Array.isArray(advertising.serviceData)) {
         cleaned.serviceData = advertising.serviceData.map((item: any) => ({
           uuid: item.uuid,
-          data: trimTrailingZeros(item)
+          data: trimTrailingZeros(item),
         }));
       } else if (typeof advertising.serviceData === 'object') {
         cleaned.serviceData = {};
@@ -439,7 +450,10 @@ const BLEScannerScreen = ({ navigation }: any) => {
         bytes.pop();
       }
 
-      return bytes.map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase();
+      return bytes
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join(' ')
+        .toUpperCase();
     } catch (e) {
       return '';
     }
@@ -454,15 +468,17 @@ const BLEScannerScreen = ({ navigation }: any) => {
     const companyId = bytes[0] | (bytes[1] << 8);
     const data = bytes.slice(2);
 
-    decoded.push(`Company ID: 0x${companyId.toString(16).padStart(4, '0').toUpperCase()}`);
+    decoded.push(
+      `Company ID: 0x${companyId.toString(16).padStart(4, '0').toUpperCase()}`,
+    );
 
     // Decode known company IDs
-    const companies: {[key: number]: string} = {
-      0x004C: 'Apple Inc.',
+    const companies: { [key: number]: string } = {
+      0x004c: 'Apple Inc.',
       0x0059: 'Nordic Semiconductor ASA',
       0x0075: 'Samsung Electronics Co. Ltd.',
       0x0006: 'Microsoft',
-      0x00E0: 'Google',
+      0x00e0: 'Google',
       0x0087: 'Garmin International',
       0x0157: 'Huawei Technologies Co. Ltd.',
     };
@@ -472,12 +488,23 @@ const BLEScannerScreen = ({ navigation }: any) => {
     }
 
     // Apple-specific decoding
-    if (companyId === 0x004C && data.length > 0) {
+    if (companyId === 0x004c && data.length > 0) {
       const appleType = data[0];
       if (appleType === 0x02 && data.length >= 21) {
         decoded.push(`Type: iBeacon`);
-        const uuid = data.slice(1, 17).map(b => b.toString(16).padStart(2, '0')).join('');
-        decoded.push(`UUID: ${uuid.substring(0, 8)}-${uuid.substring(8, 12)}-${uuid.substring(12, 16)}-${uuid.substring(16, 20)}-${uuid.substring(20)}`);
+        const uuid = data
+          .slice(1, 17)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+        decoded.push(
+          `UUID: ${uuid.substring(0, 8)}-${uuid.substring(
+            8,
+            12,
+          )}-${uuid.substring(12, 16)}-${uuid.substring(
+            16,
+            20,
+          )}-${uuid.substring(20)}`,
+        );
         const major = (data[17] << 8) | data[18];
         const minor = (data[19] << 8) | data[20];
         decoded.push(`Major: ${major}`);
@@ -498,14 +525,19 @@ const BLEScannerScreen = ({ navigation }: any) => {
 
     // Add raw data bytes
     if (data.length > 0) {
-      decoded.push(`Data (${data.length} bytes): ${data.map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase()}`);
+      decoded.push(
+        `Data (${data.length} bytes): ${data
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join(' ')
+          .toUpperCase()}`,
+      );
     }
 
     return decoded;
   };
 
   const decodeServiceUUID = (uuid: string): string => {
-    const standardServices: {[key: string]: string} = {
+    const standardServices: { [key: string]: string } = {
       '1800': 'Generic Access',
       '1801': 'Generic Attribute',
       '180A': 'Device Information',
@@ -530,7 +562,13 @@ const BLEScannerScreen = ({ navigation }: any) => {
     return standardServices[shortUUID] || uuid;
   };
 
-  const renderAdvertisingField = (device: ScannedDevice, fieldName: string, fieldTitle: string, rawValue: string, decodeFunc?: () => string[]) => {
+  const renderAdvertisingField = (
+    device: ScannedDevice,
+    fieldName: string,
+    fieldTitle: string,
+    rawValue: string,
+    decodeFunc?: () => string[],
+  ) => {
     if (!rawValue) return null;
 
     const expanded = isFieldExpanded(device.id, fieldName);
@@ -539,7 +577,8 @@ const BLEScannerScreen = ({ navigation }: any) => {
       <View key={fieldName} style={styles.adFieldContainer}>
         <TouchableOpacity
           style={styles.adFieldHeader}
-          onPress={() => toggleFieldExpansion(device.id, fieldName)}>
+          onPress={() => toggleFieldExpansion(device.id, fieldName)}
+        >
           <Text style={styles.expandIconSmall}>{expanded ? '▼' : '▶'}</Text>
           <Text style={styles.adFieldTitle}>{fieldTitle}</Text>
         </TouchableOpacity>
@@ -567,16 +606,18 @@ const BLEScannerScreen = ({ navigation }: any) => {
     }
 
     const adv = device.advertising;
-    const fields: JSX.Element[] = [];
+    const fields: (React.ReactElement | null)[] = [];
 
     // Local Name
     if (adv.localName) {
-      fields.push(renderAdvertisingField(
-        device,
-        'localName',
-        'Local Name',
-        adv.localName
-      ));
+      fields.push(
+        renderAdvertisingField(
+          device,
+          'localName',
+          'Local Name',
+          adv.localName,
+        ),
+      );
     }
 
     // TX Power Level
@@ -585,7 +626,11 @@ const BLEScannerScreen = ({ navigation }: any) => {
       let txPower = adv.txPowerLevel;
 
       // Log the original value for debugging
-      console.log(`TX Power raw value for ${device.name || device.id}: ${adv.txPowerLevel}`);
+      console.log(
+        `TX Power raw value for ${device.name || device.id}: ${
+          adv.txPowerLevel
+        }`,
+      );
 
       // If value is greater than 127, it's likely unsigned and needs conversion
       if (txPower > 127) {
@@ -595,12 +640,14 @@ const BLEScannerScreen = ({ navigation }: any) => {
       // Only show TX Power if it's in reasonable range (-30 to +20 dBm)
       // Values outside this range are likely corrupted or misinterpreted
       if (txPower >= -30 && txPower <= 20) {
-        fields.push(renderAdvertisingField(
-          device,
-          'txPower',
-          'TX Power Level',
-          `${txPower} dBm`
-        ));
+        fields.push(
+          renderAdvertisingField(
+            device,
+            'txPower',
+            'TX Power Level',
+            `${txPower} dBm`,
+          ),
+        );
       }
     }
 
@@ -608,58 +655,67 @@ const BLEScannerScreen = ({ navigation }: any) => {
     if (adv.manufacturerData) {
       const hex = bytesToHex(adv.manufacturerData);
       if (hex) {
-        fields.push(renderAdvertisingField(
-          device,
-          'mfgData',
-          'Manufacturer Data',
-          hex,
-          () => decodeManufacturerData(hex)
-        ));
+        fields.push(
+          renderAdvertisingField(
+            device,
+            'mfgData',
+            'Manufacturer Data',
+            hex,
+            () => decodeManufacturerData(hex),
+          ),
+        );
       }
     }
 
     // Service UUIDs
     if (adv.serviceUUIDs && adv.serviceUUIDs.length > 0) {
       const uuids = adv.serviceUUIDs.join(', ');
-      fields.push(renderAdvertisingField(
-        device,
-        'services',
-        `Service UUIDs (${adv.serviceUUIDs.length})`,
-        uuids,
-        () => adv.serviceUUIDs!.map(uuid => `• ${decodeServiceUUID(uuid)} (${uuid})`)
-      ));
+      fields.push(
+        renderAdvertisingField(
+          device,
+          'services',
+          `Service UUIDs (${adv.serviceUUIDs.length})`,
+          uuids,
+          () =>
+            adv.serviceUUIDs!.map(
+              uuid => `• ${decodeServiceUUID(uuid)} (${uuid})`,
+            ),
+        ),
+      );
     }
 
     // Service Data
     if (adv.serviceData) {
-      let serviceEntries: {uuid: string, data: string}[] = [];
+      let serviceEntries: { uuid: string; data: string }[] = [];
 
       if (Array.isArray(adv.serviceData)) {
         for (const item of adv.serviceData) {
           if (item && item.uuid) {
             const hex = bytesToHex(item);
-            if (hex) serviceEntries.push({uuid: item.uuid, data: hex});
+            if (hex) serviceEntries.push({ uuid: item.uuid, data: hex });
           }
         }
       } else if (typeof adv.serviceData === 'object') {
         for (const [uuid, data] of Object.entries(adv.serviceData)) {
           const hex = bytesToHex(data);
-          if (hex) serviceEntries.push({uuid, data: hex});
+          if (hex) serviceEntries.push({ uuid, data: hex });
         }
       }
 
       serviceEntries.forEach((entry, idx) => {
-        fields.push(renderAdvertisingField(
-          device,
-          `serviceData${idx}`,
-          `Service Data (${entry.uuid})`,
-          entry.data,
-          () => [
-            `UUID: ${entry.uuid}`,
-            `Service: ${decodeServiceUUID(entry.uuid)}`,
-            `Data: ${entry.data}`
-          ]
-        ));
+        fields.push(
+          renderAdvertisingField(
+            device,
+            `serviceData${idx}`,
+            `Service Data (${entry.uuid})`,
+            entry.data,
+            () => [
+              `UUID: ${entry.uuid}`,
+              `Service: ${decodeServiceUUID(entry.uuid)}`,
+              `Data: ${entry.data}`,
+            ],
+          ),
+        );
       });
     }
 
@@ -667,17 +723,23 @@ const BLEScannerScreen = ({ navigation }: any) => {
     if (adv.rawData) {
       const rawHex = bytesToHex(adv.rawData);
       if (rawHex) {
-        fields.push(renderAdvertisingField(
-          device,
-          'rawData',
-          'Raw Advertisement',
-          `${rawHex.split(' ').length} bytes`,
-          () => [`Full packet: ${rawHex}`]
-        ));
+        fields.push(
+          renderAdvertisingField(
+            device,
+            'rawData',
+            'Raw Advertisement',
+            `${rawHex.split(' ').length} bytes`,
+            () => [`Full packet: ${rawHex}`],
+          ),
+        );
       }
     }
 
-    return fields.length > 0 ? fields : <Text style={styles.noDataText}>No advertising data</Text>;
+    return fields.length > 0 ? (
+      fields
+    ) : (
+      <Text style={styles.noDataText}>No advertising data</Text>
+    );
   };
 
   return (
@@ -690,14 +752,18 @@ const BLEScannerScreen = ({ navigation }: any) => {
         </View>
         <View style={styles.statusRow}>
           {isScanning && (
-            <Animated.View style={{
-              transform: [{
-                rotate: rotateAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0deg', '360deg'],
-                }),
-              }],
-            }}>
+            <Animated.View
+              style={{
+                transform: [
+                  {
+                    rotate: rotateAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  },
+                ],
+              }}
+            >
               <Icon name="radar" size={20} color="#007AFF" />
             </Animated.View>
           )}
@@ -710,14 +776,19 @@ const BLEScannerScreen = ({ navigation }: any) => {
       <View style={styles.controls}>
         <View style={styles.buttonRow}>
           <TouchableOpacity
-            style={[styles.button, styles.primaryButton, isScanning && styles.stopButton]}
+            style={[
+              styles.button,
+              styles.primaryButton,
+              isScanning && styles.stopButton,
+            ]}
             onPress={isScanning ? stopScan : startScan}
-            disabled={!permissionsGranted}>
+            disabled={!permissionsGranted}
+          >
             <Icon
-              name={isScanning ? "stop" : "play"}
+              name={isScanning ? 'stop' : 'play'}
               size={18}
               color="#FFFFFF"
-              style={{marginRight: 8}}
+              style={{ marginRight: 8 }}
             />
             <Text style={styles.buttonText}>
               {isScanning ? 'STOP SCAN' : 'START SCAN'}
@@ -725,16 +796,15 @@ const BLEScannerScreen = ({ navigation }: any) => {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.button, styles.secondaryButton]}
-            onPress={clearList}>
+            onPress={clearList}
+          >
             <Icon
               name="delete-sweep"
               size={18}
               color="#FFFFFF"
-              style={{marginRight: 8}}
+              style={{ marginRight: 8 }}
             />
-            <Text style={styles.buttonText}>
-              CLEAR LIST
-            </Text>
+            <Text style={styles.buttonText}>CLEAR LIST</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -749,7 +819,7 @@ const BLEScannerScreen = ({ navigation }: any) => {
             placeholderTextColor="#999"
           />
           <TextInput
-            style={[styles.filterInput, {marginLeft: 8}]}
+            style={[styles.filterInput, { marginLeft: 8 }]}
             value={addressFilter}
             onChangeText={setAddressFilter}
             placeholder="Filter by address"
@@ -759,7 +829,7 @@ const BLEScannerScreen = ({ navigation }: any) => {
 
         <View style={styles.filterRow}>
           <TextInput
-            style={[styles.filterInput, {flex: 0.5}]}
+            style={[styles.filterInput, { flex: 0.5 }]}
             value={rssiFilter}
             onChangeText={setRssiFilter}
             keyboardType="numeric"
@@ -771,19 +841,24 @@ const BLEScannerScreen = ({ navigation }: any) => {
             <Switch
               value={showOnlyNamed}
               onValueChange={setShowOnlyNamed}
-              trackColor={{false: '#767577', true: '#007AFF'}}
+              trackColor={{ false: '#767577', true: '#007AFF' }}
             />
           </View>
         </View>
 
-        <View style={[styles.filterRow, {justifyContent: 'flex-end'}]}>
+        <View style={[styles.filterRow, { justifyContent: 'flex-end' }]}>
           <View style={styles.switchContainer}>
-            <Icon name="star" size={16} color="#FF9500" style={{marginRight: 4}} />
+            <Icon
+              name="star"
+              size={16}
+              color="#FF9500"
+              style={{ marginRight: 4 }}
+            />
             <Text style={styles.switchLabel}>Favorites only</Text>
             <Switch
               value={showOnlyFavorites}
               onValueChange={setShowOnlyFavorites}
-              trackColor={{false: '#767577', true: '#FF9500'}}
+              trackColor={{ false: '#767577', true: '#FF9500' }}
             />
           </View>
         </View>
@@ -795,7 +870,7 @@ const BLEScannerScreen = ({ navigation }: any) => {
           <Switch
             value={gatewayEnabled}
             onValueChange={setGatewayEnabled}
-            trackColor={{false: '#767577', true: '#34C759'}}
+            trackColor={{ false: '#767577', true: '#34C759' }}
           />
         </View>
 
@@ -804,15 +879,31 @@ const BLEScannerScreen = ({ navigation }: any) => {
             <View style={styles.gatewayStatusBar}>
               {lastGatewayPost ? (
                 <View>
-                  <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                    <Icon name="check-circle" size={16} color="#34C759" style={{marginRight: 4}} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Icon
+                      name="check-circle"
+                      size={16}
+                      color="#34C759"
+                      style={{ marginRight: 4 }}
+                    />
                     <Text style={styles.gatewayStatusText}>
                       Last posted: {lastGatewayPost.toLocaleTimeString()}
                     </Text>
                   </View>
                   {nextPostIn !== null && (
-                    <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 2}}>
-                      <Icon name="clock-outline" size={14} color="#666" style={{marginRight: 4}} />
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        marginTop: 2,
+                      }}
+                    >
+                      <Icon
+                        name="clock-outline"
+                        size={14}
+                        color="#666"
+                        style={{ marginRight: 4 }}
+                      />
                       <Text style={styles.gatewayNextText}>
                         Next in {nextPostIn}s
                       </Text>
@@ -820,19 +911,35 @@ const BLEScannerScreen = ({ navigation }: any) => {
                   )}
                 </View>
               ) : (
-                <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                  <Icon name="wifi-sync" size={16} color="#007AFF" style={{marginRight: 4}} />
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Icon
+                    name="wifi-sync"
+                    size={16}
+                    color="#007AFF"
+                    style={{ marginRight: 4 }}
+                  />
                   <Text style={styles.gatewayWaitingText}>
-                    {nextPostIn !== null ? `Sending in ${nextPostIn}s...` : 'Initializing...'}
+                    {nextPostIn !== null
+                      ? `Sending in ${nextPostIn}s...`
+                      : 'Initializing...'}
                   </Text>
                 </View>
               )}
               {gatewayError && (
-                <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 4}}>
-                  <Icon name="alert-circle" size={16} color="#FF3B30" style={{marginRight: 4}} />
-                  <Text style={styles.gatewayErrorText}>
-                    {gatewayError}
-                  </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 4,
+                  }}
+                >
+                  <Icon
+                    name="alert-circle"
+                    size={16}
+                    color="#FF3B30"
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={styles.gatewayErrorText}>{gatewayError}</Text>
                 </View>
               )}
             </View>
@@ -871,27 +978,41 @@ const BLEScannerScreen = ({ navigation }: any) => {
             colors={['#007AFF']}
             tintColor="#007AFF"
           />
-        }>
+        }
+      >
         {filteredDevices.map(device => (
           <View key={device.id} style={styles.deviceCard}>
             <TouchableOpacity
               style={styles.deviceMainInfo}
-              onPress={() => connectToDevice(device)}>
+              onPress={() => connectToDevice(device)}
+            >
               <View style={styles.deviceRow}>
-                <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    flex: 1,
+                  }}
+                >
                   <Icon
                     name="bluetooth-connect"
                     size={24}
-                    color={device.rssi > -70 ? '#34C759' : device.rssi > -85 ? '#FF9500' : '#666'}
-                    style={{marginRight: 8}}
+                    color={
+                      device.rssi > -70
+                        ? '#34C759'
+                        : device.rssi > -85
+                        ? '#FF9500'
+                        : '#666'
+                    }
+                    style={{ marginRight: 8 }}
                   />
                   <Text style={styles.deviceName}>
                     {device.name || 'Unknown Device'}
                   </Text>
                 </View>
-                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <TouchableOpacity
-                    onPress={(e) => {
+                    onPress={e => {
                       e.stopPropagation();
                       toggleFavorite({
                         id: device.id,
@@ -900,9 +1021,10 @@ const BLEScannerScreen = ({ navigation }: any) => {
                         addedAt: Date.now(),
                       });
                     }}
-                    style={{marginRight: 8}}>
+                    style={{ marginRight: 8 }}
+                  >
                     <Icon
-                      name={isFavorite(device.id) ? "star" : "star-outline"}
+                      name={isFavorite(device.id) ? 'star' : 'star-outline'}
                       size={20}
                       color="#FF9500"
                     />
@@ -910,14 +1032,25 @@ const BLEScannerScreen = ({ navigation }: any) => {
                   <Icon
                     name="signal"
                     size={16}
-                    color={device.rssi > -70 ? '#34C759' : device.rssi > -85 ? '#FF9500' : '#FF3B30'}
-                    style={{marginRight: 4}}
+                    color={
+                      device.rssi > -70
+                        ? '#34C759'
+                        : device.rssi > -85
+                        ? '#FF9500'
+                        : '#FF3B30'
+                    }
+                    style={{ marginRight: 4 }}
                   />
-                  <Text style={[
-                    styles.rssi,
-                    device.rssi > -70 ? styles.rssiGood :
-                    device.rssi > -85 ? styles.rssiMedium : styles.rssiBad
-                  ]}>
+                  <Text
+                    style={[
+                      styles.rssi,
+                      device.rssi > -70
+                        ? styles.rssiGood
+                        : device.rssi > -85
+                        ? styles.rssiMedium
+                        : styles.rssiBad,
+                    ]}
+                  >
                     {device.rssi}
                   </Text>
                 </View>
@@ -937,16 +1070,32 @@ const BLEScannerScreen = ({ navigation }: any) => {
             {/* RSSI Signal Strength Graph */}
             {device.rssiHistory && device.rssiHistory.length > 1 && (
               <View style={styles.rssiGraphSection}>
-                <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
-                  <Icon name="chart-line" size={16} color="#666" style={{marginRight: 4}} />
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginBottom: 8,
+                  }}
+                >
+                  <Icon
+                    name="chart-line"
+                    size={16}
+                    color="#666"
+                    style={{ marginRight: 4 }}
+                  />
                   <Text style={styles.graphTitle}>Signal Strength</Text>
                 </View>
                 <LineChart
                   data={{
                     labels: [],
-                    datasets: [{
-                      data: device.rssiHistory.length > 0 ? device.rssiHistory : [-100],
-                    }],
+                    datasets: [
+                      {
+                        data:
+                          device.rssiHistory.length > 0
+                            ? device.rssiHistory
+                            : [-100],
+                      },
+                    ],
                   }}
                   width={Dimensions.get('window').width - 60}
                   height={120}
@@ -956,7 +1105,9 @@ const BLEScannerScreen = ({ navigation }: any) => {
                     backgroundGradientTo: '#FFFFFF',
                     decimalPlaces: 0,
                     color: (opacity = 1) => {
-                      const avgRssi = device.rssiHistory.reduce((a, b) => a + b, 0) / device.rssiHistory.length;
+                      const avgRssi =
+                        device.rssiHistory.reduce((a, b) => a + b, 0) /
+                        device.rssiHistory.length;
                       if (avgRssi > -70) return `rgba(52, 199, 89, ${opacity})`; // green
                       if (avgRssi > -85) return `rgba(255, 149, 0, ${opacity})`; // orange
                       return `rgba(255, 59, 48, ${opacity})`; // red
@@ -985,7 +1136,9 @@ const BLEScannerScreen = ({ navigation }: any) => {
                   segments={3}
                 />
                 <Text style={styles.graphHint}>
-                  Last {device.rssiHistory.length} readings • Range: {Math.min(...device.rssiHistory)} to {Math.max(...device.rssiHistory)} dBm
+                  Last {device.rssiHistory.length} readings • Range:{' '}
+                  {Math.min(...device.rssiHistory)} to{' '}
+                  {Math.max(...device.rssiHistory)} dBm
                 </Text>
               </View>
             )}
@@ -997,9 +1150,11 @@ const BLEScannerScreen = ({ navigation }: any) => {
         ))}
         {filteredDevices.length === 0 && (
           <Text style={styles.emptyText}>
-            {!permissionsGranted ? 'Please grant BLE permissions' :
-             isScanning ? 'Scanning for devices...' :
-             'No devices found. Press START SCAN.'}
+            {!permissionsGranted
+              ? 'Please grant BLE permissions'
+              : isScanning
+              ? 'Scanning for devices...'
+              : 'No devices found. Press START SCAN.'}
           </Text>
         )}
       </ScrollView>

@@ -34,11 +34,14 @@ export const useBLE = () => {
           ]);
 
           const allGranted = Object.values(granted).every(
-            status => status === PermissionsAndroid.RESULTS.GRANTED
+            status => status === PermissionsAndroid.RESULTS.GRANTED,
           );
 
           if (!allGranted) {
-            Alert.alert('Permissions Required', 'BLE permissions are needed to scan for devices');
+            Alert.alert(
+              'Permissions Required',
+              'BLE permissions are needed to scan for devices',
+            );
             setPermissionsGranted(false);
             return;
           }
@@ -56,7 +59,9 @@ export const useBLE = () => {
 
     requestPermissions();
 
-    const discoverListener = BleManager.onDiscoverPeripheral(handleDiscoverPeripheral);
+    const discoverListener = BleManager.onDiscoverPeripheral(
+      handleDiscoverPeripheral,
+    );
     const stopScanListener = BleManager.onStopScan(() => {
       console.log('BLE scan stopped, autoRestart:', autoRestartRef.current);
       setIsScanning(false);
@@ -111,7 +116,10 @@ export const useBLE = () => {
 
   const startScan = useCallback(async () => {
     if (!permissionsGranted) {
-      Alert.alert('Permissions Required', 'Please grant BLE permissions to scan');
+      Alert.alert(
+        'Permissions Required',
+        'Please grant BLE permissions to scan',
+      );
       return;
     }
 

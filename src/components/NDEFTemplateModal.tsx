@@ -35,12 +35,23 @@ const templates: Template[] = [
   { type: 'phone', label: 'Phone Number', icon: 'phone', color: '#FF9500' },
   { type: 'email', label: 'Email Address', icon: 'email', color: '#FF3B30' },
   { type: 'wifi', label: 'WiFi Credentials', icon: 'wifi', color: '#5AC8FA' },
-  { type: 'location', label: 'GPS Location', icon: 'map-marker', color: '#AF52DE' },
+  {
+    type: 'location',
+    label: 'GPS Location',
+    icon: 'map-marker',
+    color: '#AF52DE',
+  },
 ];
 
-const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose, onSuccess }) => {
+const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({
+  visible,
+  onClose,
+  onSuccess,
+}) => {
   const { theme } = useTheme();
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateType | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateType | null>(
+    null,
+  );
   const [isWriting, setIsWriting] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
 
@@ -51,7 +62,9 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
   const [email, setEmail] = useState('');
   const [wifiSSID, setWifiSSID] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
-  const [wifiSecurity, setWifiSecurity] = useState<'WPA' | 'WEP' | 'open'>('WPA');
+  const [wifiSecurity, setWifiSecurity] = useState<'WPA' | 'WEP' | 'open'>(
+    'WPA',
+  );
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
 
@@ -116,10 +129,15 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
 
         case 'location':
           if (!latitude.trim() || !longitude.trim()) {
-            Alert.alert('Invalid Location', 'Please enter latitude and longitude');
+            Alert.alert(
+              'Invalid Location',
+              'Please enter latitude and longitude',
+            );
             return;
           }
-          bytes = Ndef.encodeMessage([Ndef.uriRecord(`geo:${latitude},${longitude}`)]);
+          bytes = Ndef.encodeMessage([
+            Ndef.uriRecord(`geo:${latitude},${longitude}`),
+          ]);
           break;
       }
 
@@ -137,7 +155,10 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
       resetForm();
     } catch (error: any) {
       console.error('Write error:', error);
-      Alert.alert('Write Error', error.message || 'Failed to write NDEF message');
+      Alert.alert(
+        'Write Error',
+        error.message || 'Failed to write NDEF message',
+      );
     } finally {
       setIsWriting(false);
       NfcManager.cancelTechnologyRequest().catch(() => {});
@@ -162,9 +183,20 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
       case 'url':
         return (
           <View>
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>Website URL</Text>
+            <Text
+              style={[styles.inputLabel, { color: theme.colors.textSecondary }]}
+            >
+              Website URL
+            </Text>
             <TextInput
-              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.colors.background,
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border,
+                },
+              ]}
               value={url}
               onChangeText={setUrl}
               placeholder="https://example.com"
@@ -178,9 +210,20 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
       case 'text':
         return (
           <View>
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>Text Message</Text>
+            <Text
+              style={[styles.inputLabel, { color: theme.colors.textSecondary }]}
+            >
+              Text Message
+            </Text>
             <TextInput
-              style={[styles.textArea, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              style={[
+                styles.textArea,
+                {
+                  backgroundColor: theme.colors.background,
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border,
+                },
+              ]}
               value={text}
               onChangeText={setText}
               placeholder="Enter your text here..."
@@ -194,9 +237,20 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
       case 'phone':
         return (
           <View>
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>Phone Number</Text>
+            <Text
+              style={[styles.inputLabel, { color: theme.colors.textSecondary }]}
+            >
+              Phone Number
+            </Text>
             <TextInput
-              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.colors.background,
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border,
+                },
+              ]}
               value={phone}
               onChangeText={setPhone}
               placeholder="+1234567890"
@@ -209,9 +263,20 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
       case 'email':
         return (
           <View>
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>Email Address</Text>
+            <Text
+              style={[styles.inputLabel, { color: theme.colors.textSecondary }]}
+            >
+              Email Address
+            </Text>
             <TextInput
-              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.colors.background,
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border,
+                },
+              ]}
               value={email}
               onChangeText={setEmail}
               placeholder="user@example.com"
@@ -225,18 +290,43 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
       case 'wifi':
         return (
           <View>
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>Network Name (SSID)</Text>
+            <Text
+              style={[styles.inputLabel, { color: theme.colors.textSecondary }]}
+            >
+              Network Name (SSID)
+            </Text>
             <TextInput
-              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.colors.background,
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border,
+                },
+              ]}
               value={wifiSSID}
               onChangeText={setWifiSSID}
               placeholder="MyWiFiNetwork"
               placeholderTextColor={theme.colors.textSecondary}
             />
 
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 12 }]}>Password</Text>
+            <Text
+              style={[
+                styles.inputLabel,
+                { color: theme.colors.textSecondary, marginTop: 12 },
+              ]}
+            >
+              Password
+            </Text>
             <TextInput
-              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.colors.background,
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border,
+                },
+              ]}
               value={wifiPassword}
               onChangeText={setWifiPassword}
               placeholder="********"
@@ -244,21 +334,36 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
               secureTextEntry
             />
 
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 12 }]}>Security Type</Text>
+            <Text
+              style={[
+                styles.inputLabel,
+                { color: theme.colors.textSecondary, marginTop: 12 },
+              ]}
+            >
+              Security Type
+            </Text>
             <View style={styles.securityButtons}>
-              {(['WPA', 'WEP', 'open'] as const).map((type) => (
+              {(['WPA', 'WEP', 'open'] as const).map(type => (
                 <TouchableOpacity
                   key={type}
                   style={[
                     styles.securityButton,
-                    wifiSecurity === type && { backgroundColor: theme.colors.primary },
-                    { borderColor: theme.colors.border }
+                    wifiSecurity === type && {
+                      backgroundColor: theme.colors.primary,
+                    },
+                    { borderColor: theme.colors.border },
                   ]}
-                  onPress={() => setWifiSecurity(type)}>
-                  <Text style={[
-                    styles.securityButtonText,
-                    { color: wifiSecurity === type ? 'white' : theme.colors.text }
-                  ]}>
+                  onPress={() => setWifiSecurity(type)}
+                >
+                  <Text
+                    style={[
+                      styles.securityButtonText,
+                      {
+                        color:
+                          wifiSecurity === type ? 'white' : theme.colors.text,
+                      },
+                    ]}
+                  >
                     {type}
                   </Text>
                 </TouchableOpacity>
@@ -270,9 +375,20 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
       case 'location':
         return (
           <View>
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>Latitude</Text>
+            <Text
+              style={[styles.inputLabel, { color: theme.colors.textSecondary }]}
+            >
+              Latitude
+            </Text>
             <TextInput
-              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.colors.background,
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border,
+                },
+              ]}
               value={latitude}
               onChangeText={setLatitude}
               placeholder="37.7749"
@@ -280,9 +396,23 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
               keyboardType="numeric"
             />
 
-            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 12 }]}>Longitude</Text>
+            <Text
+              style={[
+                styles.inputLabel,
+                { color: theme.colors.textSecondary, marginTop: 12 },
+              ]}
+            >
+              Longitude
+            </Text>
             <TextInput
-              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: theme.colors.background,
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border,
+                },
+              ]}
               value={longitude}
               onChangeText={setLongitude}
               placeholder="-122.4194"
@@ -300,10 +430,16 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
+        <View
+          style={[styles.modalContent, { backgroundColor: theme.colors.card }]}
+        >
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={selectedTemplate ? handleBack : onClose}>
-              <Icon name={selectedTemplate ? "arrow-left" : "close"} size={24} color={theme.colors.text} />
+              <Icon
+                name={selectedTemplate ? 'arrow-left' : 'close'}
+                size={24}
+                color={theme.colors.text}
+              />
             </TouchableOpacity>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
               {selectedTemplate ? 'Write NDEF Message' : 'Choose Template'}
@@ -314,13 +450,26 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
           <ScrollView style={styles.modalBody}>
             {!selectedTemplate ? (
               <View style={styles.templatesGrid}>
-                {templates.map((template) => (
+                {templates.map(template => (
                   <TouchableOpacity
                     key={template.type}
-                    style={[styles.templateCard, { backgroundColor: theme.colors.background }]}
-                    onPress={() => handleTemplateSelect(template.type)}>
-                    <Icon name={template.icon} size={36} color={template.color} />
-                    <Text style={[styles.templateLabel, { color: theme.colors.text }]}>
+                    style={[
+                      styles.templateCard,
+                      { backgroundColor: theme.colors.background },
+                    ]}
+                    onPress={() => handleTemplateSelect(template.type)}
+                  >
+                    <Icon
+                      name={template.icon}
+                      size={36}
+                      color={template.color}
+                    />
+                    <Text
+                      style={[
+                        styles.templateLabel,
+                        { color: theme.colors.text },
+                      ]}
+                    >
                       {template.label}
                     </Text>
                   </TouchableOpacity>
@@ -331,29 +480,51 @@ const NDEFTemplateModal: React.FC<NDEFTemplateModalProps> = ({ visible, onClose,
                 {renderTemplateForm()}
 
                 <TouchableOpacity
-                  style={[styles.writeButton, { backgroundColor: theme.colors.primary }]}
+                  style={[
+                    styles.writeButton,
+                    { backgroundColor: theme.colors.primary },
+                  ]}
                   onPress={handleWrite}
-                  disabled={isWriting}>
-                  <Icon name="nfc" size={20} color="white" style={{ marginRight: 8 }} />
+                  disabled={isWriting}
+                >
+                  <Icon
+                    name="nfc"
+                    size={20}
+                    color="white"
+                    style={{ marginRight: 8 }}
+                  />
                   <Text style={styles.writeButtonText}>
                     {isWriting ? 'Writing...' : 'Write Single Tag'}
                   </Text>
                 </TouchableOpacity>
 
                 {/* Batch Write Button (only for URL and Text) */}
-                {(selectedTemplate === 'url' || selectedTemplate === 'text') && (
+                {(selectedTemplate === 'url' ||
+                  selectedTemplate === 'text') && (
                   <TouchableOpacity
-                    style={[styles.batchButton, { backgroundColor: theme.colors.warning }]}
+                    style={[
+                      styles.batchButton,
+                      { backgroundColor: theme.colors.warning },
+                    ]}
                     onPress={() => {
                       const baseData = selectedTemplate === 'url' ? url : text;
                       if (!baseData || baseData === 'https://') {
-                        Alert.alert('Invalid Data', 'Please enter valid data first');
+                        Alert.alert(
+                          'Invalid Data',
+                          'Please enter valid data first',
+                        );
                         return;
                       }
                       setShowBatchModal(true);
                     }}
-                    disabled={isWriting}>
-                    <Icon name="layers-triple" size={20} color="white" style={{ marginRight: 8 }} />
+                    disabled={isWriting}
+                  >
+                    <Icon
+                      name="layers-triple"
+                      size={20}
+                      color="white"
+                      style={{ marginRight: 8 }}
+                    />
                     <Text style={styles.writeButtonText}>
                       Batch Write Multiple Tags
                     </Text>

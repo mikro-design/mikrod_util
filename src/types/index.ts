@@ -1,6 +1,7 @@
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CompositeNavigationProp } from '@react-navigation/native';
+import type { NdefRecord as LibraryNdefRecord } from 'react-native-nfc-manager';
 
 // Navigation Types
 export type RootStackParamList = {
@@ -32,18 +33,12 @@ export interface NFCData {
   id: string;
   type: string;
   techTypes: string[];
-  ndefMessage?: NdefMessage;
+  ndefMessage?: LibraryNdefRecord[];
   timestamp: string;
 }
 
-export interface NdefRecord {
-  id?: number[];
-  tnf?: number;
-  type?: number[];
-  payload?: number[];
-}
-
-export interface NdefMessage extends Array<NdefRecord> {}
+export type NdefRecord = LibraryNdefRecord;
+export type NdefMessage = LibraryNdefRecord[];
 
 // BLE Types
 export interface ScannedDevice {

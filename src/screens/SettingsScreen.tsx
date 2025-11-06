@@ -24,7 +24,9 @@ const SettingsScreen = () => {
   ];
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
       <ScrollView style={styles.content}>
         {/* Theme Section */}
         <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
@@ -34,18 +36,24 @@ const SettingsScreen = () => {
               Appearance
             </Text>
           </View>
-          <Text style={[styles.sectionDescription, { color: theme.colors.textSecondary }]}>
+          <Text
+            style={[
+              styles.sectionDescription,
+              { color: theme.colors.textSecondary },
+            ]}
+          >
             Choose your preferred theme for the app
           </Text>
 
-          {themeOptions.map((option) => (
+          {themeOptions.map(option => (
             <TouchableOpacity
               key={option.mode}
               style={[
                 styles.themeOption,
                 { borderBottomColor: theme.colors.border },
               ]}
-              onPress={() => setThemeMode(option.mode)}>
+              onPress={() => setThemeMode(option.mode)}
+            >
               <View style={styles.themeOptionContent}>
                 <Icon
                   name={option.icon}
@@ -53,12 +61,21 @@ const SettingsScreen = () => {
                   color={theme.colors.textSecondary}
                   style={{ marginRight: 12 }}
                 />
-                <Text style={[styles.themeOptionLabel, { color: theme.colors.text }]}>
+                <Text
+                  style={[
+                    styles.themeOptionLabel,
+                    { color: theme.colors.text },
+                  ]}
+                >
                   {option.label}
                 </Text>
               </View>
               {themeMode === option.mode && (
-                <Icon name="check-circle" size={24} color={theme.colors.primary} />
+                <Icon
+                  name="check-circle"
+                  size={24}
+                  color={theme.colors.primary}
+                />
               )}
             </TouchableOpacity>
           ))}
@@ -72,35 +89,72 @@ const SettingsScreen = () => {
               Data Management
             </Text>
           </View>
-          <Text style={[styles.sectionDescription, { color: theme.colors.textSecondary }]}>
+          <Text
+            style={[
+              styles.sectionDescription,
+              { color: theme.colors.textSecondary },
+            ]}
+          >
             Export, import, and manage your data
           </Text>
 
           <TouchableOpacity
-            style={[styles.themeOption, { borderBottomColor: theme.colors.border }]}
-            onPress={() => setShowExportModal(true)}>
+            style={[
+              styles.themeOption,
+              { borderBottomColor: theme.colors.border },
+            ]}
+            onPress={() => setShowExportModal(true)}
+          >
             <View style={styles.themeOptionContent}>
-              <Icon name="export" size={24} color={theme.colors.success} style={{ marginRight: 12 }} />
+              <Icon
+                name="export"
+                size={24}
+                color={theme.colors.success}
+                style={{ marginRight: 12 }}
+              />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.optionTitle, { color: theme.colors.text }]}>
+                <Text
+                  style={[styles.optionTitle, { color: theme.colors.text }]}
+                >
                   Export / Import
                 </Text>
-                <Text style={[styles.optionSubtitle, { color: theme.colors.textSecondary }]}>
+                <Text
+                  style={[
+                    styles.optionSubtitle,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
                   Backup and restore your data
                 </Text>
               </View>
             </View>
-            <Icon name="chevron-right" size={24} color={theme.colors.textSecondary} />
+            <Icon
+              name="chevron-right"
+              size={24}
+              color={theme.colors.textSecondary}
+            />
           </TouchableOpacity>
 
           <View style={[styles.themeOption, { borderBottomWidth: 0 }]}>
             <View style={styles.themeOptionContent}>
-              <Icon name="star" size={24} color="#FF9500" style={{ marginRight: 12 }} />
+              <Icon
+                name="star"
+                size={24}
+                color="#FF9500"
+                style={{ marginRight: 12 }}
+              />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.optionTitle, { color: theme.colors.text }]}>
+                <Text
+                  style={[styles.optionTitle, { color: theme.colors.text }]}
+                >
                   Favorites
                 </Text>
-                <Text style={[styles.optionSubtitle, { color: theme.colors.textSecondary }]}>
+                <Text
+                  style={[
+                    styles.optionSubtitle,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
                   {favorites.length} saved devices
                 </Text>
               </View>
@@ -117,8 +171,12 @@ const SettingsScreen = () => {
             </Text>
           </View>
 
-          <View style={[styles.infoRow, { borderBottomColor: theme.colors.border }]}>
-            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>
+          <View
+            style={[styles.infoRow, { borderBottomColor: theme.colors.border }]}
+          >
+            <Text
+              style={[styles.infoLabel, { color: theme.colors.textSecondary }]}
+            >
               App Name
             </Text>
             <Text style={[styles.infoValue, { color: theme.colors.text }]}>
@@ -126,8 +184,12 @@ const SettingsScreen = () => {
             </Text>
           </View>
 
-          <View style={[styles.infoRow, { borderBottomColor: theme.colors.border }]}>
-            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>
+          <View
+            style={[styles.infoRow, { borderBottomColor: theme.colors.border }]}
+          >
+            <Text
+              style={[styles.infoLabel, { color: theme.colors.textSecondary }]}
+            >
               Version
             </Text>
             <Text style={[styles.infoValue, { color: theme.colors.text }]}>
@@ -136,7 +198,9 @@ const SettingsScreen = () => {
           </View>
 
           <View style={styles.infoRow}>
-            <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>
+            <Text
+              style={[styles.infoLabel, { color: theme.colors.textSecondary }]}
+            >
               Current Theme
             </Text>
             <Text style={[styles.infoValue, { color: theme.colors.text }]}>
@@ -148,7 +212,11 @@ const SettingsScreen = () => {
         {/* Features Section */}
         <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
           <View style={styles.sectionHeader}>
-            <Icon name="feature-search" size={20} color={theme.colors.primary} />
+            <Icon
+              name="feature-search"
+              size={20}
+              color={theme.colors.primary}
+            />
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
               Features
             </Text>
@@ -156,35 +224,60 @@ const SettingsScreen = () => {
 
           <View style={styles.featureList}>
             <View style={styles.featureItem}>
-              <Icon name="nfc" size={20} color={theme.colors.success} style={{ marginRight: 8 }} />
+              <Icon
+                name="nfc"
+                size={20}
+                color={theme.colors.success}
+                style={{ marginRight: 8 }}
+              />
               <Text style={[styles.featureText, { color: theme.colors.text }]}>
                 NFC Tag Reading & Writing
               </Text>
             </View>
 
             <View style={styles.featureItem}>
-              <Icon name="bluetooth" size={20} color={theme.colors.info} style={{ marginRight: 8 }} />
+              <Icon
+                name="bluetooth"
+                size={20}
+                color={theme.colors.info}
+                style={{ marginRight: 8 }}
+              />
               <Text style={[styles.featureText, { color: theme.colors.text }]}>
                 BLE Device Scanning
               </Text>
             </View>
 
             <View style={styles.featureItem}>
-              <Icon name="chart-line" size={20} color={theme.colors.warning} style={{ marginRight: 8 }} />
+              <Icon
+                name="chart-line"
+                size={20}
+                color={theme.colors.warning}
+                style={{ marginRight: 8 }}
+              />
               <Text style={[styles.featureText, { color: theme.colors.text }]}>
                 RSSI Signal Graphs
               </Text>
             </View>
 
             <View style={styles.featureItem}>
-              <Icon name="memory" size={20} color={theme.colors.error} style={{ marginRight: 8 }} />
+              <Icon
+                name="memory"
+                size={20}
+                color={theme.colors.error}
+                style={{ marginRight: 8 }}
+              />
               <Text style={[styles.featureText, { color: theme.colors.text }]}>
                 Hex Memory Editor
               </Text>
             </View>
 
             <View style={styles.featureItem}>
-              <Icon name="router-wireless" size={20} color={theme.colors.primary} style={{ marginRight: 8 }} />
+              <Icon
+                name="router-wireless"
+                size={20}
+                color={theme.colors.primary}
+                style={{ marginRight: 8 }}
+              />
               <Text style={[styles.featureText, { color: theme.colors.text }]}>
                 BLE Gateway Mode
               </Text>

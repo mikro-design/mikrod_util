@@ -86,7 +86,7 @@ const ExportImportModal: React.FC<ExportImportModalProps> = ({
     Alert.alert(
       'Import Data',
       'Import functionality requires file picker. This would allow you to select a previously exported JSON file to restore your data.\n\nNote: This is a placeholder for the full implementation.',
-      [{ text: 'OK' }]
+      [{ text: 'OK' }],
     );
     // TODO: Implement file picker and JSON parsing
     // This would use react-native-document-picker or similar
@@ -113,7 +113,10 @@ const ExportImportModal: React.FC<ExportImportModalProps> = ({
 
       Alert.alert('Success', 'Favorites exported successfully');
     } catch (error: any) {
-      Alert.alert('Export Error', error.message || 'Failed to export favorites');
+      Alert.alert(
+        'Export Error',
+        error.message || 'Failed to export favorites',
+      );
     } finally {
       setIsExporting(false);
     }
@@ -141,7 +144,10 @@ const ExportImportModal: React.FC<ExportImportModalProps> = ({
 
       Alert.alert('Success', `Exported ${scanData.length} scan records`);
     } catch (error: any) {
-      Alert.alert('Export Error', error.message || 'Failed to export scan data');
+      Alert.alert(
+        'Export Error',
+        error.message || 'Failed to export scan data',
+      );
     } finally {
       setIsExporting(false);
     }
@@ -156,15 +162,17 @@ const ExportImportModal: React.FC<ExportImportModalProps> = ({
       if (dataType === 'ble') {
         csvContent = 'Device Name,Address,RSSI,Last Seen,Manufacturer\n';
         scanData.forEach((device: any) => {
-          csvContent += `"${device.name || 'Unknown'}","${device.id}",${device.rssi},"${new Date(
-            device.lastSeen
-          ).toISOString()}","${device.advertising?.manufacturerData || ''}"\n`;
+          csvContent += `"${device.name || 'Unknown'}","${device.id}",${
+            device.rssi
+          },"${new Date(device.lastSeen).toISOString()}","${
+            device.advertising?.manufacturerData || ''
+          }"\n`;
         });
       } else if (dataType === 'nfc') {
         csvContent = 'Tag ID,Type,Tech Types,Timestamp,NDEF Message\n';
         scanData.forEach((tag: any) => {
           csvContent += `"${tag.id}","${tag.type}","${tag.techTypes.join(
-            ';'
+            ';',
           )}","${tag.timestamp}","${tag.ndefMessage || ''}"\n`;
         });
       }
@@ -185,7 +193,9 @@ const ExportImportModal: React.FC<ExportImportModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
+        <View
+          style={[styles.modalContent, { backgroundColor: theme.colors.card }]}
+        >
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
               Export / Import Data
@@ -200,81 +210,151 @@ const ExportImportModal: React.FC<ExportImportModalProps> = ({
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Icon name="export" size={20} color={theme.colors.primary} />
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                <Text
+                  style={[styles.sectionTitle, { color: theme.colors.text }]}
+                >
                   Export Options
                 </Text>
               </View>
 
               <TouchableOpacity
-                style={[styles.optionCard, { backgroundColor: theme.colors.background }]}
+                style={[
+                  styles.optionCard,
+                  { backgroundColor: theme.colors.background },
+                ]}
                 onPress={() => handleExport(true)}
-                disabled={isExporting}>
+                disabled={isExporting}
+              >
                 <View style={styles.optionContent}>
-                  <Icon name="database-export" size={24} color={theme.colors.primary} />
+                  <Icon
+                    name="database-export"
+                    size={24}
+                    color={theme.colors.primary}
+                  />
                   <View style={{ marginLeft: 12, flex: 1 }}>
-                    <Text style={[styles.optionTitle, { color: theme.colors.text }]}>
+                    <Text
+                      style={[styles.optionTitle, { color: theme.colors.text }]}
+                    >
                       Export Everything
                     </Text>
-                    <Text style={[styles.optionDescription, { color: theme.colors.textSecondary }]}>
+                    <Text
+                      style={[
+                        styles.optionDescription,
+                        { color: theme.colors.textSecondary },
+                      ]}
+                    >
                       Scans, favorites, and settings
                     </Text>
                   </View>
                 </View>
-                <Icon name="chevron-right" size={20} color={theme.colors.textSecondary} />
+                <Icon
+                  name="chevron-right"
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.optionCard, { backgroundColor: theme.colors.background }]}
+                style={[
+                  styles.optionCard,
+                  { backgroundColor: theme.colors.background },
+                ]}
                 onPress={handleExportScanDataOnly}
-                disabled={isExporting || scanData.length === 0}>
+                disabled={isExporting || scanData.length === 0}
+              >
                 <View style={styles.optionContent}>
                   <Icon name="radar" size={24} color={theme.colors.success} />
                   <View style={{ marginLeft: 12, flex: 1 }}>
-                    <Text style={[styles.optionTitle, { color: theme.colors.text }]}>
+                    <Text
+                      style={[styles.optionTitle, { color: theme.colors.text }]}
+                    >
                       Export Scan Data Only
                     </Text>
-                    <Text style={[styles.optionDescription, { color: theme.colors.textSecondary }]}>
+                    <Text
+                      style={[
+                        styles.optionDescription,
+                        { color: theme.colors.textSecondary },
+                      ]}
+                    >
                       {scanData.length} {dataType.toUpperCase()} records (JSON)
                     </Text>
                   </View>
                 </View>
-                <Icon name="chevron-right" size={20} color={theme.colors.textSecondary} />
+                <Icon
+                  name="chevron-right"
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.optionCard, { backgroundColor: theme.colors.background }]}
+                style={[
+                  styles.optionCard,
+                  { backgroundColor: theme.colors.background },
+                ]}
                 onPress={handleExportCSV}
-                disabled={isExporting || scanData.length === 0}>
+                disabled={isExporting || scanData.length === 0}
+              >
                 <View style={styles.optionContent}>
-                  <Icon name="file-delimited" size={24} color={theme.colors.warning} />
+                  <Icon
+                    name="file-delimited"
+                    size={24}
+                    color={theme.colors.warning}
+                  />
                   <View style={{ marginLeft: 12, flex: 1 }}>
-                    <Text style={[styles.optionTitle, { color: theme.colors.text }]}>
+                    <Text
+                      style={[styles.optionTitle, { color: theme.colors.text }]}
+                    >
                       Export as CSV
                     </Text>
-                    <Text style={[styles.optionDescription, { color: theme.colors.textSecondary }]}>
+                    <Text
+                      style={[
+                        styles.optionDescription,
+                        { color: theme.colors.textSecondary },
+                      ]}
+                    >
                       Spreadsheet-compatible format
                     </Text>
                   </View>
                 </View>
-                <Icon name="chevron-right" size={20} color={theme.colors.textSecondary} />
+                <Icon
+                  name="chevron-right"
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.optionCard, { backgroundColor: theme.colors.background }]}
+                style={[
+                  styles.optionCard,
+                  { backgroundColor: theme.colors.background },
+                ]}
                 onPress={handleExportFavoritesOnly}
-                disabled={isExporting || favorites.length === 0}>
+                disabled={isExporting || favorites.length === 0}
+              >
                 <View style={styles.optionContent}>
                   <Icon name="star" size={24} color="#FF9500" />
                   <View style={{ marginLeft: 12, flex: 1 }}>
-                    <Text style={[styles.optionTitle, { color: theme.colors.text }]}>
+                    <Text
+                      style={[styles.optionTitle, { color: theme.colors.text }]}
+                    >
                       Export Favorites Only
                     </Text>
-                    <Text style={[styles.optionDescription, { color: theme.colors.textSecondary }]}>
+                    <Text
+                      style={[
+                        styles.optionDescription,
+                        { color: theme.colors.textSecondary },
+                      ]}
+                    >
                       {favorites.length} favorite devices
                     </Text>
                   </View>
                 </View>
-                <Icon name="chevron-right" size={20} color={theme.colors.textSecondary} />
+                <Icon
+                  name="chevron-right"
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
@@ -282,33 +362,69 @@ const ExportImportModal: React.FC<ExportImportModalProps> = ({
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Icon name="import" size={20} color={theme.colors.primary} />
-                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                <Text
+                  style={[styles.sectionTitle, { color: theme.colors.text }]}
+                >
                   Import Options
                 </Text>
               </View>
 
               <TouchableOpacity
-                style={[styles.optionCard, { backgroundColor: theme.colors.background }]}
-                onPress={handleImport}>
+                style={[
+                  styles.optionCard,
+                  { backgroundColor: theme.colors.background },
+                ]}
+                onPress={handleImport}
+              >
                 <View style={styles.optionContent}>
-                  <Icon name="file-upload" size={24} color={theme.colors.info} />
+                  <Icon
+                    name="file-upload"
+                    size={24}
+                    color={theme.colors.info}
+                  />
                   <View style={{ marginLeft: 12, flex: 1 }}>
-                    <Text style={[styles.optionTitle, { color: theme.colors.text }]}>
+                    <Text
+                      style={[styles.optionTitle, { color: theme.colors.text }]}
+                    >
                       Import from File
                     </Text>
-                    <Text style={[styles.optionDescription, { color: theme.colors.textSecondary }]}>
+                    <Text
+                      style={[
+                        styles.optionDescription,
+                        { color: theme.colors.textSecondary },
+                      ]}
+                    >
                       Restore from exported JSON
                     </Text>
                   </View>
                 </View>
-                <Icon name="chevron-right" size={20} color={theme.colors.textSecondary} />
+                <Icon
+                  name="chevron-right"
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
               </TouchableOpacity>
 
-              <View style={[styles.infoBox, { backgroundColor: theme.colors.background }]}>
-                <Icon name="information" size={16} color={theme.colors.info} style={{ marginRight: 8 }} />
-                <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
-                  Exported data is saved in JSON or CSV format and can be shared via email, cloud
-                  storage, or messaging apps.
+              <View
+                style={[
+                  styles.infoBox,
+                  { backgroundColor: theme.colors.background },
+                ]}
+              >
+                <Icon
+                  name="information"
+                  size={16}
+                  color={theme.colors.info}
+                  style={{ marginRight: 8 }}
+                />
+                <Text
+                  style={[
+                    styles.infoText,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
+                  Exported data is saved in JSON or CSV format and can be shared
+                  via email, cloud storage, or messaging apps.
                 </Text>
               </View>
             </View>

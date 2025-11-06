@@ -42,7 +42,7 @@ const NFCReaderScreen = ({ navigation }: any) => {
             duration: 800,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     } else {
       pulseAnim.setValue(1);
@@ -85,7 +85,6 @@ const NFCReaderScreen = ({ navigation }: any) => {
       // Use NfcV (ISO15693) so the session works with transceive commands later
       await NfcManager.requestTechnology(NfcTech.NfcV, {
         alertMessage: 'Ready to scan - bring NFC tag near phone now',
-        timeout: 15000,
       });
 
       // Get the tag that was just detected
@@ -105,21 +104,29 @@ const NFCReaderScreen = ({ navigation }: any) => {
         setNfcData(prev => {
           const isDuplicate = prev.some(t => t.id === newTag.id);
           if (isDuplicate) {
-            return prev.map(t => t.id === newTag.id ? {...newTag} : t);
+            return prev.map(t => (t.id === newTag.id ? { ...newTag } : t));
           }
           return [newTag, ...prev];
         });
 
-        Alert.alert('NFC Tag Read', `Tag ID: ${newTag.id}\nTech: ${newTag.techTypes.join(', ')}`);
+        Alert.alert(
+          'NFC Tag Read',
+          `Tag ID: ${newTag.id}\nTech: ${newTag.techTypes.join(', ')}`,
+        );
       }
 
       setIsScanning(false);
       // DON'T release session - keep it alive so detail screen can use it!
-      console.log('🟢 SCAN: Session kept ACTIVE - navigate to detail screen to use it');
-
+      console.log(
+        '🟢 SCAN: Session kept ACTIVE - navigate to detail screen to use it',
+      );
     } catch (error: any) {
       console.warn('NFC scan error:', error);
-      Alert.alert('Scan Error', error.message || 'Failed to read NFC tag. Please tap "Scan" first, then bring tag near phone.');
+      Alert.alert(
+        'Scan Error',
+        error.message ||
+          'Failed to read NFC tag. Please tap "Scan" first, then bring tag near phone.',
+      );
       setIsScanning(false);
       NfcManager.cancelTechnologyRequest().catch(() => {});
     }
@@ -132,33 +139,35 @@ const NFCReaderScreen = ({ navigation }: any) => {
   const parseNdefMessage = (message: any) => {
     if (!message || !Array.isArray(message)) return 'No NDEF data';
 
-    return message.map((record: any, index: number) => {
-      try {
-        const payload = record.payload;
-        if (payload) {
-          // Try to decode as text
-          const text = Ndef.text.decodePayload(new Uint8Array(payload));
-          return `Record ${index + 1}: ${text}`;
+    return message
+      .map((record: any, index: number) => {
+        try {
+          const payload = record.payload;
+          if (payload) {
+            // Try to decode as text
+            const text = Ndef.text.decodePayload(new Uint8Array(payload));
+            return `Record ${index + 1}: ${text}`;
+          }
+        } catch (e) {
+          return `Record ${index + 1}: [Binary data]`;
         }
-      } catch (e) {
-        return `Record ${index + 1}: [Binary data]`;
-      }
-      return `Record ${index + 1}: [Empty]`;
-    }).join('\n');
+        return `Record ${index + 1}: [Empty]`;
+      })
+      .join('\n');
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Icon name="nfc" size={28} color="white" />
           <Text style={styles.headerText}>NFC Tag Reader</Text>
         </View>
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Icon
-            name={isNFCEnabled ? "check-circle" : "close-circle"}
+            name={isNFCEnabled ? 'check-circle' : 'close-circle'}
             size={16}
-            color={isNFCEnabled ? "#34C759" : "#FF3B30"}
+            color={isNFCEnabled ? '#34C759' : '#FF3B30'}
           />
           <Text style={styles.statusText}>
             {isNFCEnabled ? 'Enabled' : 'Disabled'}
@@ -170,16 +179,24 @@ const NFCReaderScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={[styles.button, isScanning && styles.buttonDisabled]}
           onPress={startNFCScan}
-          disabled={isScanning || !isNFCEnabled}>
+          disabled={isScanning || !isNFCEnabled}
+        >
           {isScanning ? (
-            <Animated.View style={{
-              marginRight: 8,
-              transform: [{ scale: pulseAnim }],
-            }}>
+            <Animated.View
+              style={{
+                marginRight: 8,
+                transform: [{ scale: pulseAnim }],
+              }}
+            >
               <Icon name="nfc-search-variant" size={20} color="#FFFFFF" />
             </Animated.View>
           ) : (
-            <Icon name="nfc-tap" size={20} color="#FFFFFF" style={{marginRight: 8}} />
+            <Icon
+              name="nfc-tap"
+              size={20}
+              color="#FFFFFF"
+              style={{ marginRight: 8 }}
+            />
           )}
           <Text style={styles.buttonText}>
             {isScanning ? 'Scanning...' : 'Scan NFC Tag'}
@@ -189,8 +206,14 @@ const NFCReaderScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={[styles.button, styles.clearButton]}
           onPress={clearHistory}
-          disabled={nfcData.length === 0}>
-          <Icon name="delete-sweep" size={20} color="#FFFFFF" style={{marginRight: 8}} />
+          disabled={nfcData.length === 0}
+        >
+          <Icon
+            name="delete-sweep"
+            size={20}
+            color="#FFFFFF"
+            style={{ marginRight: 8 }}
+          />
           <Text style={styles.buttonText}>Clear History</Text>
         </TouchableOpacity>
       </View>
@@ -199,19 +222,25 @@ const NFCReaderScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={[styles.button, styles.templateButton]}
           onPress={() => setShowTemplateModal(true)}
-          disabled={!isNFCEnabled}>
-          <Icon name="file-document-edit" size={20} color="#FFFFFF" style={{marginRight: 8}} />
+          disabled={!isNFCEnabled}
+        >
+          <Icon
+            name="file-document-edit"
+            size={20}
+            color="#FFFFFF"
+            style={{ marginRight: 8 }}
+          />
           <Text style={styles.buttonText}>Write from Template</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.infoBox}>
-        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Icon
-            name={isScanning ? "cellphone-nfc" : "hand-pointing-up"}
+            name={isScanning ? 'cellphone-nfc' : 'hand-pointing-up'}
             size={20}
             color="#007AFF"
-            style={{marginRight: 8}}
+            style={{ marginRight: 8 }}
           />
           <Text style={styles.infoText}>
             {isScanning
@@ -225,21 +254,33 @@ const NFCReaderScreen = ({ navigation }: any) => {
         <Text style={styles.historyTitle}>
           History ({nfcData.length} tags read)
         </Text>
-        <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
-          <Icon name="lightbulb-on-outline" size={16} color="#FF9500" style={{marginRight: 4}} />
-          <Text style={styles.infoHint}>
-            Tap any tag to view/edit memory
-          </Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: 8,
+          }}
+        >
+          <Icon
+            name="lightbulb-on-outline"
+            size={16}
+            color="#FF9500"
+            style={{ marginRight: 4 }}
+          />
+          <Text style={styles.infoHint}>Tap any tag to view/edit memory</Text>
         </View>
         {nfcData.map((tag, index) => (
           <TouchableOpacity
             key={`${tag.id}-${index}`}
             style={styles.tagCard}
-            onPress={() => navigation.navigate('NFCTagDetail', {
-              tagId: tag.id,
-              tagType: tag.type,
-              techTypes: tag.techTypes,
-            })}>
+            onPress={() =>
+              navigation.navigate('NFCTagDetail', {
+                tagId: tag.id,
+                tagType: tag.type,
+                techTypes: tag.techTypes,
+              })
+            }
+          >
             <Text style={styles.tagId}>ID: {tag.id}</Text>
             <Text style={styles.tagDetail}>Type: {tag.type}</Text>
             <Text style={styles.tagDetail}>
@@ -355,7 +396,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#34C759',
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,

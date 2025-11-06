@@ -13,6 +13,7 @@ import {
 import BleManager from 'react-native-ble-manager';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
+import type { GATTBrowserScreenProps } from '../types/navigation';
 
 interface Service {
   uuid: string;
@@ -32,16 +33,6 @@ interface Characteristic {
   service: string;
 }
 
-interface GATTBrowserScreenProps {
-  route: {
-    params: {
-      deviceId: string;
-      deviceName: string;
-    };
-  };
-  navigation: any;
-}
-
 const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
   const { deviceId, deviceName } = route.params;
   const { theme } = useTheme();
@@ -49,13 +40,18 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
-  const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
-  const [expandedCharacteristics, setExpandedCharacteristics] = useState<Set<string>>(new Set());
+  const [expandedServices, setExpandedServices] = useState<Set<string>>(
+    new Set(),
+  );
+  const [expandedCharacteristics, setExpandedCharacteristics] = useState<
+    Set<string>
+  >(new Set());
 
   // Read/Write modal state
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'read' | 'write'>('read');
-  const [selectedCharacteristic, setSelectedCharacteristic] = useState<Characteristic | null>(null);
+  const [selectedCharacteristic, setSelectedCharacteristic] =
+    useState<Characteristic | null>(null);
   const [characteristicValue, setCharacteristicValue] = useState('');
   const [writeValue, setWriteValue] = useState('');
 
@@ -97,16 +93,21 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
           serviceMap.get(char.service)?.push(char);
         });
 
-        const servicesArray: Service[] = Array.from(serviceMap.entries()).map(([uuid, chars]) => ({
-          uuid,
-          characteristics: chars,
-        }));
+        const servicesArray: Service[] = Array.from(serviceMap.entries()).map(
+          ([uuid, chars]) => ({
+            uuid,
+            characteristics: chars,
+          }),
+        );
 
         setServices(servicesArray);
       }
     } catch (error: any) {
       console.error('GATT discovery error:', error);
-      Alert.alert('Connection Error', error.message || 'Failed to connect to device');
+      Alert.alert(
+        'Connection Error',
+        error.message || 'Failed to connect to device',
+      );
       navigation.goBack();
     } finally {
       setIsLoading(false);
@@ -140,17 +141,27 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
   const readCharacteristic = async (char: Characteristic) => {
     try {
       setIsLoading(true);
-      const data = await BleManager.read(deviceId, char.service, char.characteristic);
+      const data = await BleManager.read(
+        deviceId,
+        char.service,
+        char.characteristic,
+      );
 
       // Convert byte array to hex string
-      const hexString = data.map(byte => byte.toString(16).padStart(2, '0')).join(' ').toUpperCase();
+      const hexString = data
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join(' ')
+        .toUpperCase();
 
       setCharacteristicValue(hexString);
       setSelectedCharacteristic(char);
       setModalMode('read');
       setShowModal(true);
     } catch (error: any) {
-      Alert.alert('Read Error', error.message || 'Failed to read characteristic');
+      Alert.alert(
+        'Read Error',
+        error.message || 'Failed to read characteristic',
+      );
     } finally {
       setIsLoading(false);
     }
@@ -170,14 +181,17 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
         deviceId,
         selectedCharacteristic.service,
         selectedCharacteristic.characteristic,
-        bytes
+        bytes,
       );
 
       Alert.alert('Success', 'Characteristic written successfully');
       setShowModal(false);
       setWriteValue('');
     } catch (error: any) {
-      Alert.alert('Write Error', error.message || 'Failed to write characteristic');
+      Alert.alert(
+        'Write Error',
+        error.message || 'Failed to write characteristic',
+      );
     } finally {
       setIsLoading(false);
     }
@@ -240,17 +254,28 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
 
   const formatUuid = (uuid: string): string => {
     if (uuid.length <= 8) return uuid.toUpperCase();
-    return `${uuid.substring(0, 8)}-...-${uuid.substring(uuid.length - 12)}`.toUpperCase();
+    return `${uuid.substring(0, 8)}-...-${uuid.substring(
+      uuid.length - 12,
+    )}`.toUpperCase();
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Icon name="bluetooth-connect" size={24} color="white" style={{ marginRight: 8 }} />
+          <Icon
+            name="bluetooth-connect"
+            size={24}
+            color="white"
+            style={{ marginRight: 8 }}
+          />
           <View>
-            <Text style={styles.headerTitle}>{deviceName || 'Unknown Device'}</Text>
+            <Text style={styles.headerTitle}>
+              {deviceName || 'Unknown Device'}
+            </Text>
             <Text style={styles.headerSubtitle}>{deviceId}</Text>
           </View>
         </View>
@@ -276,52 +301,106 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
         </View>
       ) : (
         <ScrollView style={styles.content}>
-          <Text style={[styles.servicesCount, { color: theme.colors.textSecondary }]}>
+          <Text
+            style={[
+              styles.servicesCount,
+              { color: theme.colors.textSecondary },
+            ]}
+          >
             {services.length} Services Found
           </Text>
 
-          {services.map((service) => (
-            <View key={service.uuid} style={[styles.serviceCard, { backgroundColor: theme.colors.card }]}>
+          {services.map(service => (
+            <View
+              key={service.uuid}
+              style={[
+                styles.serviceCard,
+                { backgroundColor: theme.colors.card },
+              ]}
+            >
               <TouchableOpacity
                 style={styles.serviceHeader}
-                onPress={() => toggleService(service.uuid)}>
+                onPress={() => toggleService(service.uuid)}
+              >
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.serviceName, { color: theme.colors.text }]}>
+                  <Text
+                    style={[styles.serviceName, { color: theme.colors.text }]}
+                  >
                     {getServiceName(service.uuid)}
                   </Text>
-                  <Text style={[styles.serviceUuid, { color: theme.colors.textSecondary }]}>
+                  <Text
+                    style={[
+                      styles.serviceUuid,
+                      { color: theme.colors.textSecondary },
+                    ]}
+                  >
                     {formatUuid(service.uuid)}
                   </Text>
-                  <Text style={[styles.characteristicsCount, { color: theme.colors.textSecondary }]}>
+                  <Text
+                    style={[
+                      styles.characteristicsCount,
+                      { color: theme.colors.textSecondary },
+                    ]}
+                  >
                     {service.characteristics.length} characteristics
                   </Text>
                 </View>
                 <Icon
-                  name={expandedServices.has(service.uuid) ? 'chevron-up' : 'chevron-down'}
+                  name={
+                    expandedServices.has(service.uuid)
+                      ? 'chevron-up'
+                      : 'chevron-down'
+                  }
                   size={24}
                   color={theme.colors.textSecondary}
                 />
               </TouchableOpacity>
 
               {expandedServices.has(service.uuid) && (
-                <View style={[styles.characteristicsContainer, { borderTopColor: theme.colors.border }]}>
-                  {service.characteristics.map((char) => (
+                <View
+                  style={[
+                    styles.characteristicsContainer,
+                    { borderTopColor: theme.colors.border },
+                  ]}
+                >
+                  {service.characteristics.map(char => (
                     <View
                       key={char.characteristic}
-                      style={[styles.characteristicCard, { backgroundColor: theme.colors.background }]}>
+                      style={[
+                        styles.characteristicCard,
+                        { backgroundColor: theme.colors.background },
+                      ]}
+                    >
                       <TouchableOpacity
                         style={styles.characteristicHeader}
-                        onPress={() => toggleCharacteristic(char.characteristic)}>
+                        onPress={() =>
+                          toggleCharacteristic(char.characteristic)
+                        }
+                      >
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.characteristicName, { color: theme.colors.text }]}>
+                          <Text
+                            style={[
+                              styles.characteristicName,
+                              { color: theme.colors.text },
+                            ]}
+                          >
                             {getCharacteristicName(char.characteristic)}
                           </Text>
-                          <Text style={[styles.characteristicUuid, { color: theme.colors.textSecondary }]}>
+                          <Text
+                            style={[
+                              styles.characteristicUuid,
+                              { color: theme.colors.textSecondary },
+                            ]}
+                          >
                             {formatUuid(char.characteristic)}
                           </Text>
                         </View>
                         <Icon
-                          name={expandedCharacteristics.has(char.characteristic) ? 'chevron-up' : 'chevron-down'}
+                          name={
+                            expandedCharacteristics.has(char.characteristic)
+                              ? 'chevron-up'
+                              : 'chevron-down'
+                          }
                           size={20}
                           color={theme.colors.textSecondary}
                         />
@@ -331,10 +410,14 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
                         <View style={styles.characteristicDetails}>
                           {/* Properties */}
                           <View style={styles.propertiesRow}>
-                            {Object.keys(char.properties).map((prop) => (
+                            {Object.keys(char.properties).map(prop => (
                               <View
                                 key={prop}
-                                style={[styles.propertyBadge, { backgroundColor: theme.colors.primary }]}>
+                                style={[
+                                  styles.propertyBadge,
+                                  { backgroundColor: theme.colors.primary },
+                                ]}
+                              >
                                 <Text style={styles.propertyText}>{prop}</Text>
                               </View>
                             ))}
@@ -344,18 +427,41 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
                           <View style={styles.actionsRow}>
                             {char.properties.Read && (
                               <TouchableOpacity
-                                style={[styles.actionButton, { backgroundColor: theme.colors.info }]}
-                                onPress={() => readCharacteristic(char)}>
-                                <Icon name="eye" size={16} color="white" style={{ marginRight: 4 }} />
-                                <Text style={styles.actionButtonText}>Read</Text>
+                                style={[
+                                  styles.actionButton,
+                                  { backgroundColor: theme.colors.info },
+                                ]}
+                                onPress={() => readCharacteristic(char)}
+                              >
+                                <Icon
+                                  name="eye"
+                                  size={16}
+                                  color="white"
+                                  style={{ marginRight: 4 }}
+                                />
+                                <Text style={styles.actionButtonText}>
+                                  Read
+                                </Text>
                               </TouchableOpacity>
                             )}
-                            {(char.properties.Write || char.properties.WriteWithoutResponse) && (
+                            {(char.properties.Write ||
+                              char.properties.WriteWithoutResponse) && (
                               <TouchableOpacity
-                                style={[styles.actionButton, { backgroundColor: theme.colors.success }]}
-                                onPress={() => openWriteModal(char)}>
-                                <Icon name="pencil" size={16} color="white" style={{ marginRight: 4 }} />
-                                <Text style={styles.actionButtonText}>Write</Text>
+                                style={[
+                                  styles.actionButton,
+                                  { backgroundColor: theme.colors.success },
+                                ]}
+                                onPress={() => openWriteModal(char)}
+                              >
+                                <Icon
+                                  name="pencil"
+                                  size={16}
+                                  color="white"
+                                  style={{ marginRight: 4 }}
+                                />
+                                <Text style={styles.actionButtonText}>
+                                  Write
+                                </Text>
                               </TouchableOpacity>
                             )}
                           </View>
@@ -373,34 +479,65 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
       {/* Read/Write Modal */}
       <Modal visible={showModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: theme.colors.card },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
                 {modalMode === 'read' ? 'Read Value' : 'Write Value'}
               </Text>
               <TouchableOpacity onPress={() => setShowModal(false)}>
-                <Icon name="close" size={24} color={theme.colors.textSecondary} />
+                <Icon
+                  name="close"
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
             {selectedCharacteristic && (
               <View style={styles.modalBody}>
-                <Text style={[styles.modalLabel, { color: theme.colors.textSecondary }]}>
+                <Text
+                  style={[
+                    styles.modalLabel,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
                   {getCharacteristicName(selectedCharacteristic.characteristic)}
                 </Text>
-                <Text style={[styles.modalUuid, { color: theme.colors.textSecondary }]}>
+                <Text
+                  style={[
+                    styles.modalUuid,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
                   {selectedCharacteristic.characteristic}
                 </Text>
 
                 {modalMode === 'read' ? (
-                  <View style={[styles.valueContainer, { backgroundColor: theme.colors.background }]}>
-                    <Text style={[styles.valueText, { color: theme.colors.text }]}>
+                  <View
+                    style={[
+                      styles.valueContainer,
+                      { backgroundColor: theme.colors.background },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.valueText, { color: theme.colors.text }]}
+                    >
                       {characteristicValue || 'No data'}
                     </Text>
                   </View>
                 ) : (
                   <View>
-                    <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>
+                    <Text
+                      style={[
+                        styles.inputLabel,
+                        { color: theme.colors.textSecondary },
+                      ]}
+                    >
                       Hex bytes (space-separated):
                     </Text>
                     <TextInput
@@ -410,7 +547,7 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
                           backgroundColor: theme.colors.background,
                           color: theme.colors.text,
                           borderColor: theme.colors.border,
-                        }
+                        },
                       ]}
                       value={writeValue}
                       onChangeText={setWriteValue}
@@ -419,10 +556,19 @@ const GATTBrowserScreen = ({ route, navigation }: GATTBrowserScreenProps) => {
                       autoCapitalize="characters"
                     />
                     <TouchableOpacity
-                      style={[styles.writeButton, { backgroundColor: theme.colors.success }]}
+                      style={[
+                        styles.writeButton,
+                        { backgroundColor: theme.colors.success },
+                      ]}
                       onPress={writeCharacteristic}
-                      disabled={!writeValue.trim()}>
-                      <Icon name="send" size={18} color="white" style={{ marginRight: 8 }} />
+                      disabled={!writeValue.trim()}
+                    >
+                      <Icon
+                        name="send"
+                        size={18}
+                        color="white"
+                        style={{ marginRight: 8 }}
+                      />
                       <Text style={styles.writeButtonText}>Send</Text>
                     </TouchableOpacity>
                   </View>

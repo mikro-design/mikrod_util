@@ -11,49 +11,55 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { FavoritesProvider } from './src/context/FavoritesContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import type {
+  NFCStackParamList,
+  BLEStackParamList,
+  TabParamList,
+} from './src/types/navigation';
 
-const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator<TabParamList>();
+const NFCStackNav = createNativeStackNavigator<NFCStackParamList>();
+const BLEStackNav = createNativeStackNavigator<BLEStackParamList>();
 
 function NFCStack() {
   return (
-    <Stack.Navigator>
-      <Stack.Screen
+    <NFCStackNav.Navigator>
+      <NFCStackNav.Screen
         name="NFCReader"
         component={NFCReaderScreen}
         options={{
           headerTitle: 'Mikrod Util - NFC Reader',
         }}
       />
-      <Stack.Screen
+      <NFCStackNav.Screen
         name="NFCTagDetail"
         component={NFCTagDetailScreen}
         options={{
           headerTitle: 'Tag Memory Editor',
         }}
       />
-    </Stack.Navigator>
+    </NFCStackNav.Navigator>
   );
 }
 
 function BLEStack() {
   return (
-    <Stack.Navigator>
-      <Stack.Screen
+    <BLEStackNav.Navigator>
+      <BLEStackNav.Screen
         name="BLEScanner"
         component={BLEScannerScreen}
         options={{
           headerTitle: 'Mikrod Util - BLE Scanner',
         }}
       />
-      <Stack.Screen
+      <BLEStackNav.Screen
         name="GATTBrowser"
         component={GATTBrowserScreen}
         options={{
           headerTitle: 'GATT Services',
         }}
       />
-    </Stack.Navigator>
+    </BLEStackNav.Navigator>
   );
 }
 
@@ -70,7 +76,8 @@ function TabNavigator() {
           borderTopColor: theme.colors.border,
         },
         headerShown: false,
-      }}>
+      }}
+    >
       <Tab.Screen
         name="NFC"
         component={NFCStack}

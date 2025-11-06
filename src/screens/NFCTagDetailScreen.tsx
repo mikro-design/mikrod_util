@@ -12,17 +12,7 @@ import {
 } from 'react-native';
 import NfcManager, { NfcTech } from 'react-native-nfc-manager';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-
-interface NFCTagDetailScreenProps {
-  route: {
-    params: {
-      tagId: string;
-      tagType: string;
-      techTypes: string[];
-    };
-  };
-  navigation: any;
-}
+import type { NFCTagDetailScreenProps } from '../types/navigation';
 
 const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
   const { tagId, tagType, techTypes = [] } = route.params;
@@ -35,7 +25,11 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
   // Use smaller font since modal makes editing easy
   const fontSize = 13;
 
-  console.log(`📏 Screen: ${screenWidth.toFixed(0)}px, Font: ${fontSize}pt, ${bytesPerRow} bytes/row`);
+  console.log(
+    `📏 Screen: ${screenWidth.toFixed(
+      0,
+    )}px, Font: ${fontSize}pt, ${bytesPerRow} bytes/row`,
+  );
 
   // Determine which NFC technology to use based on what the tag supports
   const getTechToUse = () => {
@@ -85,7 +79,9 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
         const tag = await NfcManager.getTag();
         if (tag && tag.id) {
           // Session is active!
-          console.log('🟢 DETAIL SCREEN: Detected existing ACTIVE session from scanner!');
+          console.log(
+            '🟢 DETAIL SCREEN: Detected existing ACTIVE session from scanner!',
+          );
           setHasActiveSession(true);
         } else {
           console.log('🔴 DETAIL SCREEN: No active session detected');
@@ -113,11 +109,13 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
       // Only request technology if we don't have an active session
       if (!hasActiveSession) {
         const techToUse = getTechToUse();
-        console.log('🔴 READ: No active session, requesting technology:', techToUse);
+        console.log(
+          '🔴 READ: No active session, requesting technology:',
+          techToUse,
+        );
 
         await NfcManager.requestTechnology(techToUse, {
           alertMessage: 'Ready to read - lift tag then bring near phone',
-          timeout: 15000,
         });
 
         setHasActiveSession(true);
@@ -131,7 +129,11 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
       const startBlockNum = parseInt(startBlock) || 0;
       const numBlocksNum = parseInt(numBlocks) || 16;
 
-      console.log(`Reading blocks ${startBlockNum} to ${startBlockNum + numBlocksNum - 1}`);
+      console.log(
+        `Reading blocks ${startBlockNum} to ${
+          startBlockNum + numBlocksNum - 1
+        }`,
+      );
 
       // ISO15693 Read Single Block command
       for (let i = startBlockNum; i < startBlockNum + numBlocksNum; i++) {
@@ -143,13 +145,13 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
             cmd = [0x02, 0x20, i];
           } else {
             // Extended Read Single Block (0x30) for blocks > 255
-            const blockLSB = i & 0xFF;
-            const blockMSB = (i >> 8) & 0xFF;
+            const blockLSB = i & 0xff;
+            const blockMSB = (i >> 8) & 0xff;
             cmd = [0x02, 0x30, blockLSB, blockMSB];
           }
 
           console.log(`Sending read command for block ${i}:`, cmd);
-          const response = await NfcManager.transceive(cmd) as number[];
+          const response = (await NfcManager.transceive(cmd)) as number[];
           console.log(`Response for block ${i}:`, response);
 
           if (response && response.length > 0) {
@@ -158,10 +160,15 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
             const dataBytes = response.slice(1); // Skip status byte
             if (dataBytes.length >= 4) {
               const bytes = dataBytes.slice(0, 4);
-              memoryHex += Array.from(bytes)
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join(' ') + '\n';
-              console.log(`Read block ${i}: ${bytes.length} bytes - ${bytes.map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+              memoryHex +=
+                Array.from(bytes)
+                  .map(b => b.toString(16).padStart(2, '0'))
+                  .join(' ') + '\n';
+              console.log(
+                `Read block ${i}: ${bytes.length} bytes - ${bytes
+                  .map(b => b.toString(16).padStart(2, '0'))
+                  .join(' ')}`,
+              );
             } else {
               console.log(`Block ${i} response too short:`, dataBytes.length);
             }
@@ -178,18 +185,30 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
       if (memoryHex) {
         setMemoryData(memoryHex.trim());
         setEditedData(memoryHex.trim());
-        Alert.alert('Success', `Read ${memoryHex.split('\n').length} blocks. Tag must stay near phone for writes.`);
+        Alert.alert(
+          'Success',
+          `Read ${
+            memoryHex.split('\n').length
+          } blocks. Tag must stay near phone for writes.`,
+        );
       } else {
-        Alert.alert('Read Failed', 'Could not read any memory blocks. This tag may not support memory read commands, or you may need to adjust the start block and number of blocks.');
+        Alert.alert(
+          'Read Failed',
+          'Could not read any memory blocks. This tag may not support memory read commands, or you may need to adjust the start block and number of blocks.',
+        );
       }
-
     } catch (error: any) {
       console.error('Read memory error:', error);
       console.error('Error details:', JSON.stringify(error));
       await NfcManager.cancelTechnologyRequest().catch(() => {});
       setHasActiveSession(false);
       setIsReading(false);
-      Alert.alert('Error', `Failed to read memory: ${error.message || error.toString() || 'Unknown error'}`);
+      Alert.alert(
+        'Error',
+        `Failed to read memory: ${
+          error.message || error.toString() || 'Unknown error'
+        }`,
+      );
     }
   };
 
@@ -217,7 +236,6 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
 
         await NfcManager.requestTechnology(techToUse, {
           alertMessage: 'Ready to write - bring NFC tag near phone now',
-          timeout: 15000,
         });
 
         setHasActiveSession(true);
@@ -248,8 +266,8 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
             cmd = [0x42, 0x21, blockIndex, ...blockData];
           } else {
             // Extended Write Single Block (0x31) for blocks > 255
-            const blockLSB = blockIndex & 0xFF;
-            const blockMSB = (blockIndex >> 8) & 0xFF;
+            const blockLSB = blockIndex & 0xff;
+            const blockMSB = (blockIndex >> 8) & 0xff;
             cmd = [0x42, 0x31, blockLSB, blockMSB, ...blockData];
           }
 
@@ -266,7 +284,6 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
       setIsWriting(false);
       Alert.alert('Success', 'Written to tag!');
       setMemoryData(editedData);
-
     } catch (error: any) {
       console.error('Write memory error:', error);
       await NfcManager.cancelTechnologyRequest().catch(() => {});
@@ -282,7 +299,12 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
         <Text style={styles.headerText}>NFC Tag Memory Editor</Text>
         <Text style={styles.subHeaderText}>Tag ID: {tagId}</Text>
         <Text style={styles.subHeaderText}>Type: {tagType}</Text>
-        <Text style={[styles.subHeaderText, hasActiveSession ? styles.sessionActive : styles.sessionInactive]}>
+        <Text
+          style={[
+            styles.subHeaderText,
+            hasActiveSession ? styles.sessionActive : styles.sessionInactive,
+          ]}
+        >
           Session: {hasActiveSession ? '✓ ACTIVE' : '✗ INACTIVE'}
         </Text>
       </View>
@@ -313,7 +335,8 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
         <TouchableOpacity
           style={[styles.button, styles.readButton]}
           onPress={readMemory}
-          disabled={isReading || isWriting}>
+          disabled={isReading || isWriting}
+        >
           {isReading ? (
             <ActivityIndicator color="white" />
           ) : (
@@ -325,7 +348,8 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
           <TouchableOpacity
             style={[styles.button, styles.writeButton]}
             onPress={writeMemory}
-            disabled={isWriting}>
+            disabled={isWriting}
+          >
             {isWriting ? (
               <ActivityIndicator color="white" />
             ) : (
@@ -337,8 +361,11 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
         {memoryData && (
           <TouchableOpacity
             style={[styles.button, styles.toggleButton]}
-            onPress={() => setShowAscii(!showAscii)}>
-            <Text style={styles.buttonText}>{showAscii ? 'Hex' : 'Hex+ASCII'}</Text>
+            onPress={() => setShowAscii(!showAscii)}
+          >
+            <Text style={styles.buttonText}>
+              {showAscii ? 'Hex' : 'Hex+ASCII'}
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -346,14 +373,34 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
       {memoryData && (
         <View style={styles.editorSection}>
           <View style={styles.hexInfo}>
-            <View style={{flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap'}}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
               <Text style={styles.hexInfoText}>
-                {getBytes().length} bytes | {bytesPerRow} bytes/row | Offset: 0x{((parseInt(startBlock) || 0) * 4).toString(16).toUpperCase()}
+                {getBytes().length} bytes | {bytesPerRow} bytes/row | Offset: 0x
+                {((parseInt(startBlock) || 0) * 4).toString(16).toUpperCase()}
               </Text>
               {hasChanges && (
-                <View style={{flexDirection: 'row', alignItems: 'center', marginLeft: 8}}>
-                  <Icon name="alert" size={14} color="#FF9500" style={{marginRight: 2}} />
-                  <Text style={[styles.hexInfoText, {color: '#FF9500'}]}>Modified</Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginLeft: 8,
+                  }}
+                >
+                  <Icon
+                    name="alert"
+                    size={14}
+                    color="#FF9500"
+                    style={{ marginRight: 2 }}
+                  />
+                  <Text style={[styles.hexInfoText, { color: '#FF9500' }]}>
+                    Modified
+                  </Text>
                 </View>
               )}
             </View>
@@ -362,15 +409,22 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
           <ScrollView style={styles.hexEditor}>
             {(() => {
               const bytes = getBytes();
-              const rows: JSX.Element[] = [];
+              const rows: (React.ReactElement | null)[] = [];
 
               for (let i = 0; i < bytes.length; i += bytesPerRow) {
                 const rowBytes = bytes.slice(i, i + bytesPerRow);
-                const address = ((parseInt(startBlock) || 0) * 4 + i).toString(16).padStart(4, '0').toUpperCase();
+                const address = ((parseInt(startBlock) || 0) * 4 + i)
+                  .toString(16)
+                  .padStart(4, '0')
+                  .toUpperCase();
 
                 rows.push(
                   <View key={i} style={styles.hexRow}>
-                    <Text style={[styles.hexAddress, { fontSize: fontSize * 0.9 }]}>{address}</Text>
+                    <Text
+                      style={[styles.hexAddress, { fontSize: fontSize * 0.9 }]}
+                    >
+                      {address}
+                    </Text>
 
                     <View style={styles.hexBytesContainer}>
                       {rowBytes.map((byte, idx) => (
@@ -380,8 +434,11 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
                           onPress={() => {
                             setEditingByteIndex(i + idx);
                             setEditingByteValue(byte);
-                          }}>
-                          <Text style={[styles.hexByteText, { fontSize }]}>{byte.toUpperCase()}</Text>
+                          }}
+                        >
+                          <Text style={[styles.hexByteText, { fontSize }]}>
+                            {byte.toUpperCase()}
+                          </Text>
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -389,14 +446,18 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
                     {showAscii && (
                       <View style={styles.asciiContainer}>
                         <Text style={[styles.asciiText, { fontSize }]}>
-                          {rowBytes.map(h => {
-                            const b = parseInt(h, 16);
-                            return (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
-                          }).join('')}
+                          {rowBytes
+                            .map(h => {
+                              const b = parseInt(h, 16);
+                              return b >= 32 && b <= 126
+                                ? String.fromCharCode(b)
+                                : '.';
+                            })
+                            .join('')}
                         </Text>
                       </View>
                     )}
-                  </View>
+                  </View>,
                 );
               }
 
@@ -410,7 +471,12 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
       {editingByteIndex !== null && (
         <View style={styles.modal}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Byte at 0x{(((parseInt(startBlock) || 0) * 4) + editingByteIndex).toString(16).toUpperCase()}</Text>
+            <Text style={styles.modalTitle}>
+              Edit Byte at 0x
+              {((parseInt(startBlock) || 0) * 4 + editingByteIndex)
+                .toString(16)
+                .toUpperCase()}
+            </Text>
             <TextInput
               style={styles.modalInput}
               value={editingByteValue}
@@ -424,7 +490,8 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={() => setEditingByteIndex(null)}>
+                onPress={() => setEditingByteIndex(null)}
+              >
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -434,7 +501,8 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
                     updateByte(editingByteIndex, editingByteValue);
                   }
                   setEditingByteIndex(null);
-                }}>
+                }}
+              >
                 <Text style={styles.modalButtonText}>Save</Text>
               </TouchableOpacity>
             </View>
@@ -444,9 +512,15 @@ const NFCTagDetailScreen = ({ route, navigation }: NFCTagDetailScreenProps) => {
 
       {!memoryData && !isReading && (
         <View style={styles.emptyState}>
-          <Icon name="cellphone-nfc" size={48} color="#999" style={{marginBottom: 16}} />
+          <Icon
+            name="cellphone-nfc"
+            size={48}
+            color="#999"
+            style={{ marginBottom: 16 }}
+          />
           <Text style={styles.emptyText}>
-            Hold your phone near the NFC tag and tap "Read Memory" to view its contents
+            Hold your phone near the NFC tag and tap "Read Memory" to view its
+            contents
           </Text>
         </View>
       )}
@@ -489,7 +563,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
     borderRadius: 8,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
@@ -554,7 +628,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 8,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,

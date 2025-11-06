@@ -1,4 +1,10 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
+import React, {
+  createContext,
+  useState,
+  useContext,
+  useEffect,
+  ReactNode,
+} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface FavoriteDevice {
@@ -16,7 +22,9 @@ interface FavoritesContextType {
   toggleFavorite: (device: FavoriteDevice) => Promise<void>;
 }
 
-const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
+const FavoritesContext = createContext<FavoritesContextType | undefined>(
+  undefined,
+);
 
 const FAVORITES_STORAGE_KEY = '@mikrod_util_favorites';
 
@@ -24,7 +32,9 @@ interface FavoritesProviderProps {
   children: ReactNode;
 }
 
-export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }) => {
+export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({
+  children,
+}) => {
   const [favorites, setFavorites] = useState<FavoriteDevice[]>([]);
 
   // Load favorites from storage on mount
@@ -45,7 +55,10 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
 
   const saveFavorites = async (newFavorites: FavoriteDevice[]) => {
     try {
-      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(newFavorites));
+      await AsyncStorage.setItem(
+        FAVORITES_STORAGE_KEY,
+        JSON.stringify(newFavorites),
+      );
       setFavorites(newFavorites);
     } catch (error) {
       console.error('Failed to save favorites:', error);
@@ -75,7 +88,15 @@ export const FavoritesProvider: React.FC<FavoritesProviderProps> = ({ children }
   };
 
   return (
-    <FavoritesContext.Provider value={{ favorites, addFavorite, removeFavorite, isFavorite, toggleFavorite }}>
+    <FavoritesContext.Provider
+      value={{
+        favorites,
+        addFavorite,
+        removeFavorite,
+        isFavorite,
+        toggleFavorite,
+      }}
+    >
       {children}
     </FavoritesContext.Provider>
   );

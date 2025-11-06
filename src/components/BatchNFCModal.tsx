@@ -53,7 +53,7 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
 
       // Wait if paused
       while (isPaused && shouldContinue.current) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise<void>(resolve => setTimeout(() => resolve(), 100));
       }
 
       if (!shouldContinue.current) {
@@ -96,33 +96,35 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
         await NfcManager.cancelTechnologyRequest();
 
         // Short delay between tags
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
       } catch (error: any) {
         console.error(`Error writing tag ${i + 1}:`, error);
 
         // Ask user if they want to retry or skip
-        const userChoice = await new Promise<'retry' | 'skip' | 'cancel'>((resolve) => {
-          Alert.alert(
-            `Error Writing Tag ${i + 1}`,
-            error.message || 'Failed to write tag',
-            [
-              {
-                text: 'Retry',
-                onPress: () => resolve('retry'),
-              },
-              {
-                text: 'Skip',
-                onPress: () => resolve('skip'),
-                style: 'cancel',
-              },
-              {
-                text: 'Cancel Batch',
-                onPress: () => resolve('cancel'),
-                style: 'destructive',
-              },
-            ]
-          );
-        });
+        const userChoice = await new Promise<'retry' | 'skip' | 'cancel'>(
+          resolve => {
+            Alert.alert(
+              `Error Writing Tag ${i + 1}`,
+              error.message || 'Failed to write tag',
+              [
+                {
+                  text: 'Retry',
+                  onPress: () => resolve('retry'),
+                },
+                {
+                  text: 'Skip',
+                  onPress: () => resolve('skip'),
+                  style: 'cancel',
+                },
+                {
+                  text: 'Cancel Batch',
+                  onPress: () => resolve('cancel'),
+                  style: 'destructive',
+                },
+              ],
+            );
+          },
+        );
 
         if (userChoice === 'retry') {
           i--; // Retry current tag
@@ -175,7 +177,7 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
               onClose();
             },
           },
-        ]
+        ],
       );
     } else {
       onClose();
@@ -185,7 +187,9 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
+        <View
+          style={[styles.modalContent, { backgroundColor: theme.colors.card }]}
+        >
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
               Batch NFC Write
@@ -199,21 +203,45 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
             {/* Configuration */}
             {!isWriting && (
               <View>
-                <View style={[styles.infoCard, { backgroundColor: theme.colors.background }]}>
-                  <Icon name="information" size={20} color={theme.colors.info} style={{ marginRight: 8 }} />
-                  <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
+                <View
+                  style={[
+                    styles.infoCard,
+                    { backgroundColor: theme.colors.background },
+                  ]}
+                >
+                  <Icon
+                    name="information"
+                    size={20}
+                    color={theme.colors.info}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text
+                    style={[
+                      styles.infoText,
+                      { color: theme.colors.textSecondary },
+                    ]}
+                  >
                     Write the same data to multiple NFC tags sequentially
                   </Text>
                 </View>
 
-                <Text style={[styles.label, { color: theme.colors.text }]}>Base Data:</Text>
-                <View style={[styles.dataPreview, { backgroundColor: theme.colors.background }]}>
+                <Text style={[styles.label, { color: theme.colors.text }]}>
+                  Base Data:
+                </Text>
+                <View
+                  style={[
+                    styles.dataPreview,
+                    { backgroundColor: theme.colors.background },
+                  ]}
+                >
                   <Text style={[styles.dataText, { color: theme.colors.text }]}>
                     {baseData}
                   </Text>
                 </View>
 
-                <Text style={[styles.label, { color: theme.colors.text }]}>Number of Tags:</Text>
+                <Text style={[styles.label, { color: theme.colors.text }]}>
+                  Number of Tags:
+                </Text>
                 <TextInput
                   style={[
                     styles.input,
@@ -221,7 +249,7 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
                       backgroundColor: theme.colors.background,
                       color: theme.colors.text,
                       borderColor: theme.colors.border,
-                    }
+                    },
                   ]}
                   value={batchCount}
                   onChangeText={setBatchCount}
@@ -235,9 +263,16 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
                     Add Sequential Numbers
                   </Text>
                   <TouchableOpacity
-                    onPress={() => setUseSequentialNumbers(!useSequentialNumbers)}>
+                    onPress={() =>
+                      setUseSequentialNumbers(!useSequentialNumbers)
+                    }
+                  >
                     <Icon
-                      name={useSequentialNumbers ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                      name={
+                        useSequentialNumbers
+                          ? 'checkbox-marked'
+                          : 'checkbox-blank-outline'
+                      }
                       size={24}
                       color={theme.colors.primary}
                     />
@@ -246,7 +281,9 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
 
                 {useSequentialNumbers && (
                   <View>
-                    <Text style={[styles.label, { color: theme.colors.text }]}>Start Number:</Text>
+                    <Text style={[styles.label, { color: theme.colors.text }]}>
+                      Start Number:
+                    </Text>
                     <TextInput
                       style={[
                         styles.input,
@@ -254,7 +291,7 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
                           backgroundColor: theme.colors.background,
                           color: theme.colors.text,
                           borderColor: theme.colors.border,
-                        }
+                        },
                       ]}
                       value={startNumber}
                       onChangeText={setStartNumber}
@@ -262,7 +299,12 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
                       placeholder="1"
                       placeholderTextColor={theme.colors.textSecondary}
                     />
-                    <Text style={[styles.helperText, { color: theme.colors.textSecondary }]}>
+                    <Text
+                      style={[
+                        styles.helperText,
+                        { color: theme.colors.textSecondary },
+                      ]}
+                    >
                       {templateType === 'url'
                         ? `URLs will be: ${baseData}?id=1, ${baseData}?id=2, ...`
                         : `Text will be: ${baseData} #1, ${baseData} #2, ...`}
@@ -271,9 +313,18 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
                 )}
 
                 <TouchableOpacity
-                  style={[styles.startButton, { backgroundColor: theme.colors.success }]}
-                  onPress={startBatchWrite}>
-                  <Icon name="play" size={20} color="white" style={{ marginRight: 8 }} />
+                  style={[
+                    styles.startButton,
+                    { backgroundColor: theme.colors.success },
+                  ]}
+                  onPress={startBatchWrite}
+                >
+                  <Icon
+                    name="play"
+                    size={20}
+                    color="white"
+                    style={{ marginRight: 8 }}
+                  />
                   <Text style={styles.startButtonText}>Start Batch Write</Text>
                 </TouchableOpacity>
               </View>
@@ -282,31 +333,60 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
             {/* Progress */}
             {isWriting && (
               <View>
-                <View style={[styles.progressCard, { backgroundColor: theme.colors.background }]}>
-                  <Text style={[styles.progressTitle, { color: theme.colors.text }]}>
+                <View
+                  style={[
+                    styles.progressCard,
+                    { backgroundColor: theme.colors.background },
+                  ]}
+                >
+                  <Text
+                    style={[styles.progressTitle, { color: theme.colors.text }]}
+                  >
                     Writing Tags...
                   </Text>
                   <View style={styles.progressRow}>
-                    <Text style={[styles.progressText, { color: theme.colors.text }]}>
+                    <Text
+                      style={[
+                        styles.progressText,
+                        { color: theme.colors.text },
+                      ]}
+                    >
                       {currentCount} / {totalCount}
                     </Text>
-                    <Text style={[styles.progressPercent, { color: theme.colors.primary }]}>
+                    <Text
+                      style={[
+                        styles.progressPercent,
+                        { color: theme.colors.primary },
+                      ]}
+                    >
                       {Math.round((currentCount / totalCount) * 100)}%
                     </Text>
                   </View>
-                  <View style={[styles.progressBar, { backgroundColor: theme.colors.border }]}>
+                  <View
+                    style={[
+                      styles.progressBar,
+                      { backgroundColor: theme.colors.border },
+                    ]}
+                  >
                     <View
                       style={[
                         styles.progressFill,
                         {
-                          backgroundColor: isPaused ? theme.colors.warning : theme.colors.success,
+                          backgroundColor: isPaused
+                            ? theme.colors.warning
+                            : theme.colors.success,
                           width: `${(currentCount / totalCount) * 100}%`,
-                        }
+                        },
                       ]}
                     />
                   </View>
                   {isPaused && (
-                    <Text style={[styles.pausedText, { color: theme.colors.warning }]}>
+                    <Text
+                      style={[
+                        styles.pausedText,
+                        { color: theme.colors.warning },
+                      ]}
+                    >
                       ⏸ Paused
                     </Text>
                   )}
@@ -315,39 +395,79 @@ const BatchNFCModal: React.FC<BatchNFCModalProps> = ({
                 <View style={styles.controlButtons}>
                   {!isPaused ? (
                     <TouchableOpacity
-                      style={[styles.controlButton, { backgroundColor: theme.colors.warning }]}
-                      onPress={handlePause}>
-                      <Icon name="pause" size={20} color="white" style={{ marginRight: 8 }} />
+                      style={[
+                        styles.controlButton,
+                        { backgroundColor: theme.colors.warning },
+                      ]}
+                      onPress={handlePause}
+                    >
+                      <Icon
+                        name="pause"
+                        size={20}
+                        color="white"
+                        style={{ marginRight: 8 }}
+                      />
                       <Text style={styles.controlButtonText}>Pause</Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
-                      style={[styles.controlButton, { backgroundColor: theme.colors.success }]}
-                      onPress={handleResume}>
-                      <Icon name="play" size={20} color="white" style={{ marginRight: 8 }} />
+                      style={[
+                        styles.controlButton,
+                        { backgroundColor: theme.colors.success },
+                      ]}
+                      onPress={handleResume}
+                    >
+                      <Icon
+                        name="play"
+                        size={20}
+                        color="white"
+                        style={{ marginRight: 8 }}
+                      />
                       <Text style={styles.controlButtonText}>Resume</Text>
                     </TouchableOpacity>
                   )}
 
                   <TouchableOpacity
-                    style={[styles.controlButton, { backgroundColor: theme.colors.error }]}
-                    onPress={handleStop}>
-                    <Icon name="stop" size={20} color="white" style={{ marginRight: 8 }} />
+                    style={[
+                      styles.controlButton,
+                      { backgroundColor: theme.colors.error },
+                    ]}
+                    onPress={handleStop}
+                  >
+                    <Icon
+                      name="stop"
+                      size={20}
+                      color="white"
+                      style={{ marginRight: 8 }}
+                    />
                     <Text style={styles.controlButtonText}>Stop</Text>
                   </TouchableOpacity>
                 </View>
 
                 {/* Written Tags List */}
                 <View style={styles.tagsList}>
-                  <Text style={[styles.tagsListTitle, { color: theme.colors.text }]}>
+                  <Text
+                    style={[styles.tagsListTitle, { color: theme.colors.text }]}
+                  >
                     Written Tags:
                   </Text>
                   {writtenTags.map((tag, index) => (
                     <View
                       key={index}
-                      style={[styles.tagItem, { backgroundColor: theme.colors.background }]}>
-                      <Icon name="check-circle" size={16} color={theme.colors.success} style={{ marginRight: 8 }} />
-                      <Text style={[styles.tagText, { color: theme.colors.text }]}>
+                      style={[
+                        styles.tagItem,
+                        { backgroundColor: theme.colors.background },
+                      ]}
+                    >
+                      <Icon
+                        name="check-circle"
+                        size={16}
+                        color={theme.colors.success}
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text
+                        style={[styles.tagText, { color: theme.colors.text }]}
+                      >
                         {tag}
                       </Text>
                     </View>

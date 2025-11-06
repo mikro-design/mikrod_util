@@ -22,14 +22,17 @@ export const useNFC = () => {
           setIsNFCEnabled(enabled);
 
           if (!enabled) {
-            setError('NFC is supported but disabled. Please enable NFC in settings.');
+            setError(
+              'NFC is supported but disabled. Please enable NFC in settings.',
+            );
           }
         } else {
           setError('This device does not support NFC');
           Alert.alert('NFC Not Supported', 'This device does not support NFC');
         }
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to initialize NFC';
+        const errorMessage =
+          err instanceof Error ? err.message : 'Failed to initialize NFC';
         setError(errorMessage);
         console.error('NFC init error:', err);
       }
@@ -79,12 +82,15 @@ export const useNFC = () => {
             setNfcData(prev => {
               const isDuplicate = prev.some(t => t.id === newTag.id);
               if (isDuplicate) {
-                return prev.map(t => t.id === newTag.id ? {...newTag} : t);
+                return prev.map(t => (t.id === newTag.id ? { ...newTag } : t));
               }
               return [newTag, ...prev];
             });
 
-            Alert.alert('NFC Tag Read', `Tag ID: ${newTag.id}\nTech: ${newTag.techTypes.join(', ')}`);
+            Alert.alert(
+              'NFC Tag Read',
+              `Tag ID: ${newTag.id}\nTech: ${newTag.techTypes.join(', ')}`,
+            );
             setIsScanning(false);
             return;
           }
@@ -95,7 +101,7 @@ export const useNFC = () => {
       }
 
       // If no tag found immediately, listen for new tags
-      NfcManager.setEventListener(NfcEvents.DiscoverTag, async (tag) => {
+      NfcManager.setEventListener(NfcEvents.DiscoverTag, async (tag: any) => {
         console.log('Tag discovered:', tag);
 
         if (tag) {
@@ -110,12 +116,15 @@ export const useNFC = () => {
           setNfcData(prev => {
             const isDuplicate = prev.some(t => t.id === newTag.id);
             if (isDuplicate) {
-              return prev.map(t => t.id === newTag.id ? {...newTag} : t);
+              return prev.map(t => (t.id === newTag.id ? { ...newTag } : t));
             }
             return [newTag, ...prev];
           });
 
-          Alert.alert('NFC Tag Read', `Tag ID: ${newTag.id}\nTech: ${newTag.techTypes.join(', ')}`);
+          Alert.alert(
+            'NFC Tag Read',
+            `Tag ID: ${newTag.id}\nTech: ${newTag.techTypes.join(', ')}`,
+          );
 
           setIsScanning(false);
           NfcManager.setEventListener(NfcEvents.DiscoverTag, null);
@@ -124,7 +133,6 @@ export const useNFC = () => {
       });
 
       await NfcManager.registerTagEvent();
-
     } catch (err: any) {
       const errorMessage = err?.message || 'Failed to scan for NFC tags';
       console.warn('NFC scan error:', err);
@@ -153,18 +161,20 @@ export const useNFC = () => {
   const parseNdefMessage = useCallback((message: any): string => {
     if (!message || !Array.isArray(message)) return 'No NDEF data';
 
-    return message.map((record: any, index: number) => {
-      try {
-        const payload = record.payload;
-        if (payload) {
-          const text = Ndef.text.decodePayload(new Uint8Array(payload));
-          return `Record ${index + 1}: ${text}`;
+    return message
+      .map((record: any, index: number) => {
+        try {
+          const payload = record.payload;
+          if (payload) {
+            const text = Ndef.text.decodePayload(new Uint8Array(payload));
+            return `Record ${index + 1}: ${text}`;
+          }
+        } catch (e) {
+          return `Record ${index + 1}: [Binary data]`;
         }
-      } catch (e) {
-        return `Record ${index + 1}: [Binary data]`;
-      }
-      return `Record ${index + 1}: [Empty]`;
-    }).join('\n');
+        return `Record ${index + 1}: [Empty]`;
+      })
+      .join('\n');
   }, []);
 
   return {
