@@ -12,48 +12,328 @@ import {
   Switch,
   RefreshControl,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import KeepAwake from '@sayem314/react-native-keep-awake';
 import BleManager, {
   Peripheral,
 } from 'react-native-ble-manager';
+import NetInfo from '@react-native-community/netinfo';
+import { logger } from '../utils/logger';
+import init from 'react_native_mqtt';
+import { IMqttClient } from 'react_native_mqtt';
+import { Camera } from 'react-native-camera-kit';
+
+// Declare Paho global from react_native_mqtt
+declare const Paho: any;
+
+interface MQTTConfig {
+  broker: string;
+  port: number;
+  topic: string;
+  username?: string;
+  password?: string;
+  tls?: boolean;
+  connection_id?: string;
+}
 
 interface ScannedDevice extends Peripheral {
   rssi: number;
   lastSeen: Date;
+  firstSeen?: Date;
+  previousSeen?: Date;
+  advertisingInterval?: number; // in milliseconds
 }
+
+type SortOption = 'rssi' | 'name' | 'firstSeen' | 'lastSeen' | 'insertion';
+
+interface ByteFilter {
+  id: string;
+  position: string;
+  value: string;
+  enabled: boolean;
+}
+
+interface FilterPreset {
+  name: string;
+  icon: string;
+  description: string;
+  companyId?: string;
+  serviceUuid?: string;
+  bytePattern?: string; // Hex pattern with xx for wildcards (e.g., "aabbxxcc")
+  byteFilters?: Array<{position: string; value: string}>; // Legacy, kept for reference
+}
+
+const FILTER_PRESETS: FilterPreset[] = [
+  {
+    name: 'iBeacon',
+    icon: '📍',
+    description: 'Apple iBeacon standard',
+    companyId: '0x004C',
+    byteFilters: [{position: '7', value: '0x02'}, {position: '8', value: '0x15'}],
+  },
+  {
+    name: 'Sterisol',
+    icon: '🏥',
+    description: 'Sterisol iBeacon',
+    companyId: '0x004F',
+    byteFilters: [{position: '7', value: '0x02'}, {position: '8', value: '0x15'}],
+  },
+  {
+    name: 'Eddystone',
+    icon: '🔵',
+    description: 'Google Eddystone beacon',
+    serviceUuid: 'FEAA',
+  },
+  {
+    name: 'AirTag',
+    icon: '🔖',
+    description: 'Apple AirTag / FindMy',
+    companyId: '0x004C',
+    byteFilters: [{position: '7', value: '0x12'}],
+  },
+  {
+    name: 'FindMy',
+    icon: '📡',
+    description: 'Apple FindMy network',
+    companyId: '0x004C',
+    byteFilters: [{position: '7', value: '0x10'}],
+  },
+  {
+    name: 'AirPods',
+    icon: '🎧',
+    description: 'Apple AirPods',
+    companyId: '0x004C',
+    byteFilters: [{position: '7', value: '0x07'}],
+  },
+  {
+    name: 'Fast Pair',
+    icon: '⚡',
+    description: 'Android Fast Pair',
+    serviceUuid: 'FE2C',
+  },
+  {
+    name: 'Exposure',
+    icon: '🦠',
+    description: 'COVID Exposure Notification',
+    serviceUuid: 'FD6F',
+  },
+];
 
 const BLEScannerScreen = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Map<string, ScannedDevice>>(new Map());
   const [nameFilter, setNameFilter] = useState('');
-  const [rssiFilter, setRssiFilter] = useState('-100');
+  const [rssiFilter, setRssiFilter] = useState(-100);
   const [addressFilter, setAddressFilter] = useState('');
   const [showOnlyNamed, setShowOnlyNamed] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('insertion');
+  const [showFilters, setShowFilters] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showSortSection, setShowSortSection] = useState(false);
+  const [showMQTTSection, setShowMQTTSection] = useState(false);
+
+  // Advanced filters
+  const [serviceUuidFilter, setServiceUuidFilter] = useState('');
+  const [companyIdFilter, setCompanyIdFilter] = useState('');
+  const [rawBytePattern, setRawBytePattern] = useState('');
+
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
+  const [favoriteDevices, setFavoriteDevices] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [gatewayEnabled, setGatewayEnabled] = useState(false);
-  const [gatewayUrl, setGatewayUrl] = useState('http://192.168.1.100:8080/api/ble');
+  const [mqttTopic, setMqttTopic] = useState('');
+  const [mqttBroker, setMqttBroker] = useState('');
+  const [mqttPort, setMqttPort] = useState(1883);
+  const [mqttUsername, setMqttUsername] = useState('');
+  const [mqttPassword, setMqttPassword] = useState('');
+  const [mqttTls, setMqttTls] = useState(false);
+  const [mqttConfig, setMqttConfig] = useState<MQTTConfig | null>(null);
+  const [showQRScanner, setShowQRScanner] = useState(false);
   const [gatewayInterval, setGatewayInterval] = useState('10');
+  const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
+  const [showFABMenu, setShowFABMenu] = useState(false);
   const [lastGatewayPost, setLastGatewayPost] = useState<Date | null>(null);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [nextPostIn, setNextPostIn] = useState<number | null>(null);
+  const [mqttConnected, setMqttConnected] = useState(false);
   const scanningRef = useRef(false);
   const autoRestartRef = useRef(false);
   const gatewayIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const mqttClientRef = useRef<IMqttClient | null>(null);
 
   const handleDiscoverPeripheral = useCallback((peripheral: Peripheral) => {
     setDevices(prevDevices => {
       const newDevices = new Map(prevDevices);
+      const existingDevice = prevDevices.get(peripheral.id);
+      const now = new Date();
+
+      // Calculate advertising interval
+      let advertisingInterval = existingDevice?.advertisingInterval;
+      if (existingDevice?.lastSeen) {
+        const interval = now.getTime() - existingDevice.lastSeen.getTime();
+        // Only update interval if reasonable (between 20ms and 10 seconds)
+        if (interval >= 20 && interval <= 10000) {
+          // Use exponential moving average for smoother values
+          advertisingInterval = existingDevice.advertisingInterval
+            ? (existingDevice.advertisingInterval * 0.7 + interval * 0.3)
+            : interval;
+        }
+      }
+
       const device: ScannedDevice = {
         ...peripheral,
         rssi: peripheral.rssi || -100,
-        lastSeen: new Date(),
+        lastSeen: now,
+        previousSeen: existingDevice?.lastSeen,
+        firstSeen: existingDevice?.firstSeen || now,
+        advertisingInterval,
       };
       newDevices.set(peripheral.id, device);
       return newDevices;
     });
   }, []);
+
+
+  // Handle QR code scan
+  const handleQRCodeScan = useCallback((event: any) => {
+    try {
+      // react-native-camera-kit provides the code in event.nativeEvent.codeStringValue
+      const qrData = event?.nativeEvent?.codeStringValue || event;
+      const config: MQTTConfig = JSON.parse(qrData);
+
+      // Validate required fields
+      if (!config.broker || !config.port || !config.topic) {
+        Alert.alert('Invalid QR Code', 'QR code missing required fields: broker, port, topic');
+        logger.error('QR', 'Invalid QR code - missing required fields');
+        return;
+      }
+
+      // Apply configuration
+      setMqttConfig(config);
+      setMqttBroker(config.broker);
+      setMqttPort(config.port);
+      setMqttTopic(config.topic);
+      setMqttUsername(config.username || '');
+      setMqttPassword(config.password || '');
+      setMqttTls(config.tls || false);
+
+      setShowQRScanner(false);
+
+      logger.success('QR', `Configuration loaded: ${config.broker}:${config.port}/${config.topic}`);
+      Alert.alert(
+        'Configuration Loaded',
+        `Broker: ${config.broker}\nPort: ${config.port}\nTopic: ${config.topic}${config.connection_id ? `\nID: ${config.connection_id}` : ''}`
+      );
+    } catch (error) {
+      Alert.alert('Invalid QR Code', 'QR code does not contain valid JSON configuration');
+      logger.error('QR', `Invalid QR code JSON: ${error}`);
+    }
+  }, []);
+
+  // Request camera permission
+  const requestCameraPermission = async () => {
+    try {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          {
+            title: 'Camera Permission',
+            message: 'This app needs camera access to scan QR codes',
+            buttonPositive: 'OK',
+          }
+        );
+        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+          setShowQRScanner(true);
+          logger.info('QR', 'Camera permission granted');
+        } else {
+          Alert.alert('Permission Denied', 'Camera permission is required to scan QR codes');
+          logger.error('QR', 'Camera permission denied');
+        }
+      } else {
+        setShowQRScanner(true);
+      }
+    } catch (error) {
+      logger.error('QR', `Camera permission error: ${error}`);
+      Alert.alert('Error', 'Failed to request camera permission');
+    }
+  };
+
+  // MQTT connection management - only connect after QR code scan
+  useEffect(() => {
+    // Only connect if gateway is enabled AND we have a valid config from QR scan
+    if (gatewayEnabled && mqttConfig && mqttBroker && mqttTopic) {
+      // Initialize MQTT
+      init({
+        size: 10000,
+        storageBackend: undefined,
+        defaultExpires: 1000 * 3600 * 24,
+        enableCache: true,
+        sync: {},
+      });
+
+      logger.info('MQTT', `Connecting to ${mqttBroker}:${mqttPort}`);
+
+      const clientId = `ble_scanner_${Date.now()}`;
+      const client = new Paho.MQTT.Client(mqttBroker, mqttPort, clientId) as unknown as IMqttClient;
+
+      client.onConnectionLost = (responseObject: any) => {
+        setMqttConnected(false);
+        setGatewayError('MQTT disconnected');
+        logger.error('MQTT', `Connection lost: ${responseObject.errorMessage}`);
+      };
+
+      client.onMessageArrived = (message: any) => {
+        // We're only publishing, not subscribing
+        logger.debug('MQTT', `Unexpected message: ${message.payloadString}`);
+      };
+
+      const connectOptions: any = {
+        onSuccess: () => {
+          setMqttConnected(true);
+          setGatewayError(null);
+          mqttClientRef.current = client;
+          logger.success('MQTT', `Connected to ${mqttBroker}:${mqttPort}`);
+        },
+        onFailure: (error: any) => {
+          setMqttConnected(false);
+          setGatewayError(`MQTT failed: ${error.errorMessage || 'Unknown error'}`);
+          logger.error('MQTT', `Connection failed: ${error.errorMessage || 'Unknown'}`);
+        },
+        timeout: 10,
+        keepAliveInterval: 60,
+        useSSL: mqttTls,
+        cleanSession: true,
+      };
+
+      // Add authentication if provided
+      if (mqttUsername) {
+        connectOptions.userName = mqttUsername;
+        if (mqttPassword) {
+          connectOptions.password = mqttPassword;
+        }
+        logger.info('MQTT', `Using authentication for user: ${mqttUsername}`);
+      }
+
+      client.connect(connectOptions);
+
+      return () => {
+        if (mqttClientRef.current?.isConnected()) {
+          mqttClientRef.current.disconnect();
+          logger.info('MQTT', 'Disconnected');
+        }
+        mqttClientRef.current = null;
+        setMqttConnected(false);
+      };
+    } else if (gatewayEnabled && !mqttConfig) {
+      // Gateway enabled but no QR code scanned yet
+      logger.info('MQTT', 'Gateway enabled - waiting for QR code scan');
+      setGatewayError('Scan QR code to configure');
+      setMqttConnected(false);
+    }
+  }, [gatewayEnabled, mqttConfig, mqttBroker, mqttPort, mqttTopic, mqttUsername, mqttPassword, mqttTls]);
+
+  // TODO: Load favorite devices from persistent storage
 
   useEffect(() => {
     const requestPermissions = async () => {
@@ -80,8 +360,9 @@ const BLEScannerScreen = () => {
         }
 
         await BleManager.start({ showAlert: false });
+        logger.success('BLE', 'BLE initialized successfully');
       } catch (error) {
-        console.error('BLE init error:', error);
+        logger.error('BLE', 'BLE initialization failed', { error });
         Alert.alert('Error', 'Failed to initialize BLE');
       }
     };
@@ -122,6 +403,11 @@ const BLEScannerScreen = () => {
       setDevices(prevDevices => {
         const newDevices = new Map(prevDevices);
         for (const [id, device] of newDevices) {
+          // Don't remove favorited devices
+          if (favoriteDevices.has(id)) {
+            continue;
+          }
+
           const age = now.getTime() - device.lastSeen.getTime();
           if (age > maxAge) {
             newDevices.delete(id);
@@ -139,7 +425,7 @@ const BLEScannerScreen = () => {
         BleManager.stopScan().catch(() => {});
       }
     };
-  }, [handleDiscoverPeripheral]);
+  }, [handleDiscoverPeripheral, favoriteDevices]);
 
   const startScan = async () => {
     if (!permissionsGranted) {
@@ -153,8 +439,9 @@ const BLEScannerScreen = () => {
       scanningRef.current = true;
       autoRestartRef.current = true; // Enable auto-restart
       await BleManager.scan([], 30, true);
+      logger.info('BLE', 'BLE scan started');
     } catch (error) {
-      console.error('Scan error:', error);
+      logger.error('BLE', 'Failed to start BLE scan', { error });
       setIsScanning(false);
       scanningRef.current = false;
       autoRestartRef.current = false;
@@ -168,8 +455,9 @@ const BLEScannerScreen = () => {
       await BleManager.stopScan();
       setIsScanning(false);
       scanningRef.current = false;
+      logger.info('BLE', 'BLE scan stopped');
     } catch (error) {
-      console.error('Stop scan error:', error);
+      logger.error('BLE', 'Error stopping BLE scan', { error });
       autoRestartRef.current = false;
       setIsScanning(false);
       scanningRef.current = false;
@@ -260,7 +548,7 @@ const BLEScannerScreen = () => {
   };
 
   const postToGateway = useCallback(async () => {
-    if (!gatewayEnabled || !gatewayUrl) {
+    if (!gatewayEnabled) {
       return;
     }
 
@@ -272,28 +560,36 @@ const BLEScannerScreen = () => {
         advertising: cleanAdvertisingData(device.advertising),
       }));
 
-      const response = await fetch(gatewayUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(devicesArray),
-      });
+      logger.debug('BLE', `Sending ${devicesArray.length} devices`);
 
-      if (response.ok) {
-        setLastGatewayPost(new Date());
-        setGatewayError(null);
-      } else {
-        setGatewayError(`HTTP ${response.status}`);
+      if (!mqttClientRef.current || !mqttClientRef.current.isConnected()) {
+        setGatewayError('MQTT not connected');
+        logger.error('MQTT', 'Cannot publish - not connected');
+        return;
       }
+
+      const payload = JSON.stringify(devicesArray);
+      const message = new Paho.MQTT.Message(payload);
+      message.destinationName = mqttTopic;
+      message.qos = 1; // QoS 1: at least once delivery
+      message.retained = false; // Don't retain messages
+
+      logger.info('MQTT', `Publishing ${devicesArray.length} devices to topic: ${mqttTopic}`);
+      mqttClientRef.current.send(message);
+
+      setLastGatewayPost(new Date());
+      setGatewayError(null);
+      logger.success('MQTT', `Published ${devicesArray.length} devices to ${mqttTopic}`);
     } catch (error) {
-      console.error('Gateway post error:', error);
-      setGatewayError(error instanceof Error ? error.message : 'Network error');
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error('GATEWAY', `Error: ${errorMsg}`);
+      setGatewayError(errorMsg);
     }
-  }, [gatewayEnabled, gatewayUrl, devices]);
+  }, [gatewayEnabled, mqttTopic, devices]);
 
   useEffect(() => {
-    if (gatewayEnabled) {
+    // Only start posting if gateway is enabled AND we have a valid MQTT connection
+    if (gatewayEnabled && mqttConnected && mqttConfig) {
       // Post immediately when enabled
       postToGateway();
 
@@ -323,25 +619,109 @@ const BLEScannerScreen = () => {
         setNextPostIn(null);
       };
     }
-  }, [gatewayEnabled, gatewayInterval, postToGateway]);
+  }, [gatewayEnabled, mqttConnected, mqttConfig, gatewayInterval, postToGateway]);
 
   const connectToDevice = async (deviceId: string) => {
     try {
       await BleManager.connect(deviceId);
       Alert.alert('Connected', `Connected to device ${deviceId}`);
       const peripheralInfo = await BleManager.retrieveServices(deviceId);
+      logger.success('BLE', `Connected to device`, { deviceId });
       console.log('Peripheral info:', peripheralInfo);
     } catch (error) {
-      console.error('Connection error:', error);
+      logger.error('BLE', 'Failed to connect to device', { deviceId, error });
       Alert.alert('Error', 'Failed to connect to device');
     }
   };
 
-  const filterDevices = () => {
-    const rssiThreshold = parseInt(rssiFilter) || -100;
+  // Match raw byte pattern (e.g., "aabbxxcc" where xx = don't care)
+  const matchesBytePattern = (bytes: number[], pattern: string): boolean => {
+    if (!pattern) return true;
 
-    return Array.from(devices.values()).filter(device => {
-      if (device.rssi < rssiThreshold) return false;
+    // Remove spaces and convert to lowercase
+    const cleanPattern = pattern.replace(/\s/g, '').toLowerCase();
+
+    // Pattern must be pairs of hex digits or 'xx'
+    if (cleanPattern.length % 2 !== 0) return false;
+
+    const patternBytes: Array<number | null> = [];
+    for (let i = 0; i < cleanPattern.length; i += 2) {
+      const pair = cleanPattern.substring(i, i + 2);
+      if (pair === 'xx') {
+        patternBytes.push(null); // wildcard
+      } else {
+        const value = parseInt(pair, 16);
+        if (isNaN(value)) return false;
+        patternBytes.push(value);
+      }
+    }
+
+    // Check if pattern matches anywhere in the byte array
+    for (let offset = 0; offset <= bytes.length - patternBytes.length; offset++) {
+      let match = true;
+      for (let i = 0; i < patternBytes.length; i++) {
+        const patternByte = patternBytes[i];
+        if (patternByte !== null && bytes[offset + i] !== patternByte) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return true;
+    }
+
+    return false;
+  };
+
+  const getRawAdvertisingBytes = (device: ScannedDevice): number[] => {
+    // ALWAYS use raw advertising data, no fallback
+    if (device.advertising?.rawData) {
+      const rawData = device.advertising.rawData;
+      let bytes: number[] = [];
+
+      if (Array.isArray(rawData)) {
+        bytes = rawData;
+      } else if (rawData.bytes) {
+        bytes = Array.from(rawData.bytes as number[]);
+      } else if (rawData.data) {
+        bytes = Array.from(rawData.data as number[]);
+      }
+
+      if (bytes.length > 0) {
+        logger.debug('BLE', `Device ${device.name || device.id} using rawData, length: ${bytes.length}, first 10: ${bytes.slice(0, 10).map((b, i) => `[${i}]=0x${b.toString(16).padStart(2, '0')}`).join(' ')}`);
+        return bytes;
+      }
+    }
+
+    // Return empty array if no rawData available
+    return [];
+  };
+
+  const getManufacturerDataBytes = (device: ScannedDevice): number[] => {
+    if (!device.advertising?.manufacturerData) return [];
+    const mfgData = device.advertising.manufacturerData;
+    let bytes: number[] = [];
+
+    if (Array.isArray(mfgData)) {
+      bytes = mfgData;
+      logger.debug('BLE', `Device ${device.name || device.id} mfg data is array, length: ${bytes.length}, first 10: ${bytes.slice(0, 10).map((b, i) => `[${i}]=0x${b.toString(16).padStart(2, '0')}`).join(' ')}`);
+    } else if (mfgData.bytes) {
+      bytes = Array.from(mfgData.bytes as number[]);
+      logger.debug('BLE', `Device ${device.name || device.id} mfg data has .bytes property, length: ${bytes.length}`);
+    } else if (mfgData.data) {
+      bytes = Array.from(mfgData.data as number[]);
+      logger.debug('BLE', `Device ${device.name || device.id} mfg data has .data property, length: ${bytes.length}`);
+    } else {
+      logger.debug('BLE', `Device ${device.name || device.id} mfg data unknown type: ${typeof mfgData}, value: ${JSON.stringify(mfgData)}`);
+    }
+
+    return bytes;
+  };
+
+  const filterAndSortDevices = () => {
+    // Filter
+    let filtered = Array.from(devices.values()).filter(device => {
+      // Basic filters
+      if (device.rssi < rssiFilter) return false;
 
       if (nameFilter && device.name) {
         if (!device.name.toLowerCase().includes(nameFilter.toLowerCase())) {
@@ -359,11 +739,134 @@ const BLEScannerScreen = () => {
         return false;
       }
 
+      // Advanced filters
+      if (serviceUuidFilter && device.advertising?.serviceUUIDs) {
+        const filterUuids = serviceUuidFilter.toLowerCase().split(',').map(s => s.trim()).filter(s => s);
+        const hasMatch = filterUuids.some(filterUuid =>
+          device.advertising!.serviceUUIDs!.some(deviceUuid =>
+            deviceUuid.toLowerCase().includes(filterUuid)
+          )
+        );
+        if (!hasMatch) return false;
+      }
+
+      // Company ID filter
+      if (companyIdFilter && device.advertising?.manufacturerData) {
+        const bytes = getManufacturerDataBytes(device);
+        logger.debug('BLE', `CompanyID filter: bytes.length=${bytes.length}, need >=7`);
+        if (bytes.length < 7) {
+          logger.debug('BLE', `CompanyID filter REJECT: bytes too short`);
+          return false;
+        }
+        const companyId = bytes[5] | (bytes[6] << 8);
+        const filterCompanyId = parseInt(companyIdFilter.replace(/^0x/i, ''), 16);
+        logger.debug('BLE', `CompanyID check: got=0x${companyId.toString(16)}, want=${companyIdFilter} (0x${filterCompanyId.toString(16)})`);
+        if (isNaN(filterCompanyId) || companyId !== filterCompanyId) {
+          logger.debug('BLE', `CompanyID filter REJECT: mismatch`);
+          return false;
+        }
+        logger.debug('BLE', `CompanyID filter PASS`);
+      }
+
+      // Raw advertising data byte pattern filter
+      if (rawBytePattern) {
+        const bytes = getRawAdvertisingBytes(device);
+        if (bytes.length === 0) return false;
+        if (!matchesBytePattern(bytes, rawBytePattern)) return false;
+      }
+
       return true;
     });
+
+    // Sort (only if not using insertion order)
+    if (sortBy !== 'insertion') {
+      filtered.sort((a, b) => {
+        // Always put starred devices first
+        const aStarred = favoriteDevices.has(a.id);
+        const bStarred = favoriteDevices.has(b.id);
+        if (aStarred && !bStarred) return -1;
+        if (!aStarred && bStarred) return 1;
+
+        // Then apply the selected sort
+        switch (sortBy) {
+          case 'rssi':
+            return b.rssi - a.rssi; // Strongest first
+          case 'name':
+            const nameA = (a.name || 'Unknown').toLowerCase();
+            const nameB = (b.name || 'Unknown').toLowerCase();
+            return nameA.localeCompare(nameB);
+          case 'firstSeen':
+            return (a.firstSeen?.getTime() || 0) - (b.firstSeen?.getTime() || 0);
+          case 'lastSeen':
+            return b.lastSeen.getTime() - a.lastSeen.getTime(); // Most recent first
+          default:
+            return 0;
+        }
+      });
+    } else {
+      // Even in insertion order, starred devices should be first
+      filtered.sort((a, b) => {
+        const aStarred = favoriteDevices.has(a.id);
+        const bStarred = favoriteDevices.has(b.id);
+        if (aStarred && !bStarred) return -1;
+        if (!aStarred && bStarred) return 1;
+        return 0; // Keep insertion order for devices with same starred status
+      });
+    }
+
+    return filtered;
   };
 
-  const filteredDevices = filterDevices();
+  const filteredDevices = filterAndSortDevices();
+
+  const getActiveFiltersCount = () => {
+    let count = 0;
+    if (rssiFilter > -100) count++;
+    if (nameFilter) count++;
+    if (addressFilter) count++;
+    if (showOnlyNamed) count++;
+    if (serviceUuidFilter) count++;
+    if (companyIdFilter) count++;
+    if (rawBytePattern) count++;
+    return count;
+  };
+
+  const clearAllFilters = () => {
+    setRssiFilter(-100);
+    setNameFilter('');
+    setAddressFilter('');
+    setShowOnlyNamed(false);
+    setServiceUuidFilter('');
+    setCompanyIdFilter('');
+    setRawBytePattern('');
+    logger.info('BLE', 'All filters cleared');
+  };
+
+  const applyPreset = (preset: FilterPreset) => {
+    // Clear existing filters first
+    setNameFilter('');
+    setAddressFilter('');
+    setShowOnlyNamed(false);
+    setServiceUuidFilter('');
+    setCompanyIdFilter('');
+    setRawBytePattern('');
+
+    // Apply preset filters
+    if (preset.companyId) {
+      setCompanyIdFilter(preset.companyId);
+    }
+    if (preset.serviceUuid) {
+      setServiceUuidFilter(preset.serviceUuid);
+    }
+    if (preset.bytePattern) {
+      setRawBytePattern(preset.bytePattern);
+    }
+
+    // Ensure advanced filters are visible
+    setShowAdvancedFilters(true);
+
+    logger.info('BLE', `Applied preset: ${preset.name}`);
+  };
 
   const toggleFieldExpansion = (deviceId: string, fieldName: string) => {
     const key = `${deviceId}:${fieldName}`;
@@ -380,6 +883,21 @@ const BLEScannerScreen = () => {
 
   const isFieldExpanded = (deviceId: string, fieldName: string): boolean => {
     return expandedFields.has(`${deviceId}:${fieldName}`);
+  };
+
+  const toggleFavorite = (deviceId: string) => {
+    setFavoriteDevices(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(deviceId)) {
+        newSet.delete(deviceId);
+        logger.info('BLE', `Removed device ${deviceId} from favorites`);
+      } else {
+        newSet.add(deviceId);
+        logger.info('BLE', `Added device ${deviceId} to favorites`);
+      }
+      // TODO: Save to persistent storage
+      return newSet;
+    });
   };
 
   const bytesToHex = (data: any): string => {
@@ -402,14 +920,37 @@ const BLEScannerScreen = () => {
     }
   };
 
+  const bytesToHexWithOffsets = (data: any): string => {
+    if (!data) return '';
+    try {
+      let bytes: number[] = [];
+      if (data.bytes) bytes = Array.from(data.bytes as number[]);
+      else if (Array.isArray(data)) bytes = Array.from(data);
+      else if (data.data) bytes = Array.from(data.data as number[]);
+      else if (typeof data === 'string') return data;
+
+      // Trim trailing zeros for cleaner display
+      // Note: Filter still uses full array, so positions remain correct
+      while (bytes.length > 0 && bytes[bytes.length - 1] === 0) {
+        bytes.pop();
+      }
+
+      // Format with offsets: [0]=02 [1]=01 [2]=06 etc.
+      // Indices match the actual byte positions in the full array
+      return bytes.map((b, i) => `[${i}]=${b.toString(16).padStart(2, '0')}`).join(' ').toUpperCase();
+    } catch (e) {
+      return '';
+    }
+  };
+
   const decodeManufacturerData = (hex: string): string[] => {
     const decoded: string[] = [];
     const bytes = hex.split(' ').map(b => parseInt(b, 16));
 
-    if (bytes.length < 2) return decoded;
+    if (bytes.length < 7) return decoded;
 
-    const companyId = bytes[0] | (bytes[1] << 8);
-    const data = bytes.slice(2);
+    const companyId = bytes[5] | (bytes[6] << 8);
+    const data = bytes.slice(7);
 
     decoded.push(`Company ID: 0x${companyId.toString(16).padStart(4, '0').toUpperCase()}`);
 
@@ -563,14 +1104,15 @@ const BLEScannerScreen = () => {
 
     // Manufacturer Data
     if (adv.manufacturerData) {
-      const hex = bytesToHex(adv.manufacturerData);
-      if (hex) {
+      const hexWithOffsets = bytesToHexWithOffsets(adv.manufacturerData);
+      const hexPlain = bytesToHex(adv.manufacturerData);
+      if (hexWithOffsets) {
         fields.push(renderAdvertisingField(
           device,
           'mfgData',
           'Manufacturer Data',
-          hex,
-          () => decodeManufacturerData(hex)
+          hexWithOffsets,
+          () => decodeManufacturerData(hexPlain)
         ));
       }
     }
@@ -622,14 +1164,15 @@ const BLEScannerScreen = () => {
 
     // Raw Data
     if (adv.rawData) {
-      const rawHex = bytesToHex(adv.rawData);
-      if (rawHex) {
+      const rawHexWithOffsets = bytesToHexWithOffsets(adv.rawData);
+      if (rawHexWithOffsets) {
+        const byteCount = rawHexWithOffsets.split(' ').length;
         fields.push(renderAdvertisingField(
           device,
           'rawData',
           'Raw Advertisement',
-          `${rawHex.split(' ').length} bytes`,
-          () => [`Full packet: ${rawHex}`]
+          `${byteCount} bytes`,
+          () => [`Full packet: ${rawHexWithOffsets}`]
         ));
       }
     }
@@ -640,98 +1183,274 @@ const BLEScannerScreen = () => {
   return (
     <View style={styles.container}>
       {gatewayEnabled && <KeepAwake />}
+      {/* Clean Header */}
       <View style={styles.header}>
         <Text style={styles.headerText}>BLE Scanner</Text>
-        <Text style={styles.statusText}>
-          {isScanning ? 'Scanning...' : `${filteredDevices.length} devices`}
+        <Text style={styles.headerCount}>
+          {isScanning ? 'Scanning...' : `${filteredDevices.length}/${devices.size}`}
         </Text>
       </View>
 
-      <View style={styles.controls}>
-        <View style={styles.buttonRow}>
+      {/* Active Filter Chips - Only show if filters are active */}
+      {getActiveFiltersCount() > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChipsContainer}>
+          {rssiFilter > -100 && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>RSSI ≥ {rssiFilter} dBm</Text>
+              <TouchableOpacity onPress={() => setRssiFilter(-100)} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {nameFilter !== '' && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>Name: {nameFilter}</Text>
+              <TouchableOpacity onPress={() => setNameFilter('')} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {addressFilter !== '' && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>Addr: {addressFilter}</Text>
+              <TouchableOpacity onPress={() => setAddressFilter('')} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {showOnlyNamed && (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>Named only</Text>
+              <TouchableOpacity onPress={() => setShowOnlyNamed(false)} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {serviceUuidFilter && (
+            <View style={[styles.filterChip, styles.filterChipAdvanced]}>
+              <Text style={styles.filterChipText}>UUID: {serviceUuidFilter}</Text>
+              <TouchableOpacity onPress={() => setServiceUuidFilter('')} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {companyIdFilter && (
+            <View style={[styles.filterChip, styles.filterChipAdvanced]}>
+              <Text style={styles.filterChipText}>Company: {companyIdFilter}</Text>
+              <TouchableOpacity onPress={() => setCompanyIdFilter('')} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {rawBytePattern && (
+            <View style={[styles.filterChip, styles.filterChipAdvanced]}>
+              <Text style={styles.filterChipText}>pattern: {rawBytePattern}</Text>
+              <TouchableOpacity onPress={() => setRawBytePattern('')} style={styles.filterChipClose}>
+                <Text style={styles.filterChipCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      )}
+
+      {/* Settings Panel Overlay */}
+      {showSortSection && (
+        <View style={styles.settingsOverlay}>
+          {/* Close button */}
           <TouchableOpacity
-            style={[styles.button, styles.primaryButton, isScanning && styles.stopButton]}
-            onPress={isScanning ? stopScan : startScan}
-            disabled={!permissionsGranted}>
-            <Text style={styles.buttonText}>
-              {isScanning ? 'STOP SCAN' : 'START SCAN'}
+            style={styles.closeSettingsButton}
+            onPress={() => {
+              setShowSortSection(false);
+              setShowFilters(false);
+              setShowMQTTSection(false);
+            }}>
+            <Text style={styles.closeSettingsText}>✕ Close Settings</Text>
+          </TouchableOpacity>
+          <ScrollView style={styles.settingsContent}>
+        <View style={styles.sortSection}>
+        <Text style={styles.sortLabel}>Sort by:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll}>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'insertion' && styles.sortButtonActive]}
+            onPress={() => setSortBy('insertion')}>
+            <Text style={[styles.sortButtonText, sortBy === 'insertion' && styles.sortButtonTextActive]}>
+              Insertion Order
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.button, styles.secondaryButton]}
-            onPress={clearList}>
-            <Text style={styles.buttonText}>
-              CLEAR LIST
+            style={[styles.sortButton, sortBy === 'rssi' && styles.sortButtonActive]}
+            onPress={() => setSortBy('rssi')}>
+            <Text style={[styles.sortButtonText, sortBy === 'rssi' && styles.sortButtonTextActive]}>
+              Signal Strength
             </Text>
           </TouchableOpacity>
-        </View>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'name' && styles.sortButtonActive]}
+            onPress={() => setSortBy('name')}>
+            <Text style={[styles.sortButtonText, sortBy === 'name' && styles.sortButtonTextActive]}>
+              Name
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'lastSeen' && styles.sortButtonActive]}
+            onPress={() => setSortBy('lastSeen')}>
+            <Text style={[styles.sortButtonText, sortBy === 'lastSeen' && styles.sortButtonTextActive]}>
+              Last Seen
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'firstSeen' && styles.sortButtonActive]}
+            onPress={() => setSortBy('firstSeen')}>
+            <Text style={[styles.sortButtonText, sortBy === 'firstSeen' && styles.sortButtonTextActive]}>
+              First Seen
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
+      )}
 
-      <View style={styles.filters}>
-        <View style={styles.filterRow}>
-          <TextInput
-            style={styles.filterInput}
-            value={nameFilter}
-            onChangeText={setNameFilter}
-            placeholder="Filter by name"
-            placeholderTextColor="#999"
-          />
-          <TextInput
-            style={[styles.filterInput, {marginLeft: 8}]}
-            value={addressFilter}
-            onChangeText={setAddressFilter}
-            placeholder="Filter by address"
-            placeholderTextColor="#999"
-          />
-        </View>
-
-        <View style={styles.filterRow}>
-          <TextInput
-            style={[styles.filterInput, {flex: 0.5}]}
-            value={rssiFilter}
-            onChangeText={setRssiFilter}
-            keyboardType="numeric"
-            placeholder="Min RSSI"
-            placeholderTextColor="#999"
-          />
-          <View style={styles.switchContainer}>
-            <Text style={styles.switchLabel}>Named only</Text>
-            <Switch
-              value={showOnlyNamed}
-              onValueChange={setShowOnlyNamed}
-              trackColor={{false: '#767577', true: '#007AFF'}}
+      {/* Filter Section */}
+        <View style={styles.filtersScrollView}>
+        <View style={styles.filters}>
+          {/* RSSI Slider */}
+          <View style={styles.rssiSliderContainer}>
+            <Text style={styles.rssiLabel}>Min RSSI: {rssiFilter} dBm</Text>
+            <Slider
+              style={styles.rssiSlider}
+              minimumValue={-100}
+              maximumValue={-30}
+              step={5}
+              value={rssiFilter}
+              onValueChange={setRssiFilter}
+              minimumTrackTintColor="#007AFF"
+              maximumTrackTintColor="#E5E5EA"
+              thumbTintColor="#007AFF"
             />
+          </View>
+
+          {/* Text Filters */}
+          <View style={styles.filterRow}>
+            <TextInput
+              style={styles.filterInput}
+              value={nameFilter}
+              onChangeText={setNameFilter}
+              placeholder="Filter by name"
+              placeholderTextColor="#999"
+            />
+            <TextInput
+              style={[styles.filterInput, {marginLeft: 8}]}
+              value={addressFilter}
+              onChangeText={setAddressFilter}
+              placeholder="Filter by address"
+              placeholderTextColor="#999"
+            />
+          </View>
+
+          {/* Named Only Switch */}
+          <View style={styles.switchRow}>
+            <View style={styles.switchContainer}>
+              <Text style={styles.switchLabel}>Show named devices only</Text>
+              <Switch
+                value={showOnlyNamed}
+                onValueChange={setShowOnlyNamed}
+                trackColor={{false: '#767577', true: '#007AFF'}}
+              />
+            </View>
+          </View>
+
+          {/* Filter Presets */}
+          <View style={styles.presetsSection}>
+            <Text style={styles.presetsLabel}>Quick Filters:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetsScroll}>
+              {FILTER_PRESETS.map(preset => (
+                <TouchableOpacity
+                  key={preset.name}
+                  style={styles.presetButton}
+                  onPress={() => applyPreset(preset)}>
+                  <Text style={styles.presetIcon}>{preset.icon}</Text>
+                  <Text style={styles.presetName}>{preset.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Advanced Filters Section */}
+          <View style={styles.advancedToggle}>
+            <Text style={styles.advancedToggleText}>
+              Advanced Payload Filtering
+            </Text>
+          </View>
+          <View style={styles.advancedFiltersSection}>
+              {/* Service UUID Filter */}
+              <View style={styles.advancedFilterGroup}>
+                <Text style={styles.advancedFilterLabel}>Service UUID(s)</Text>
+                <Text style={styles.advancedFilterHint}>Comma-separated UUIDs</Text>
+                <TextInput
+                  style={styles.advancedFilterInput}
+                  value={serviceUuidFilter}
+                  onChangeText={setServiceUuidFilter}
+                  placeholder="e.g. 180F, 180A"
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Company ID Filter */}
+              <View style={styles.advancedFilterGroup}>
+                <Text style={styles.advancedFilterLabel}>Manufacturer Company ID</Text>
+                <Text style={styles.advancedFilterHint}>Hex value (e.g. 0x004C for Apple)</Text>
+                <TextInput
+                  style={styles.advancedFilterInput}
+                  value={companyIdFilter}
+                  onChangeText={setCompanyIdFilter}
+                  placeholder="0x004C"
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Raw Advertising Byte Pattern */}
+              <View style={styles.advancedFilterGroup}>
+                <Text style={styles.advancedFilterLabel}>Raw Advertising Byte Pattern</Text>
+                <Text style={styles.advancedFilterHint}>Hex pattern with 'xx' for wildcards (e.g., "aabbxxcc" matches 0xAA 0xBB ?? ?? 0xCC)</Text>
+                <TextInput
+                  style={styles.advancedFilterInput}
+                  value={rawBytePattern}
+                  onChangeText={setRawBytePattern}
+                  placeholder="aabbxxcc"
+                  placeholderTextColor="#999"
+                  autoCapitalize="none"
+                />
+              </View>
           </View>
         </View>
       </View>
+          </ScrollView>
+        </View>
+      )}
 
-      <View style={styles.gatewaySection}>
+      {/* MQTT Gateway Overlay */}
+      {showMQTTSection && (
+        <View style={styles.settingsOverlay}>
+          <TouchableOpacity
+            style={styles.closeSettingsButton}
+            onPress={() => setShowMQTTSection(false)}>
+            <Text style={styles.closeSettingsText}>✕ Close MQTT Gateway</Text>
+          </TouchableOpacity>
+          <ScrollView style={styles.settingsContent}>
+        <View style={styles.gatewaySection}>
         <View style={styles.gatewaySectionHeader}>
-          <Text style={styles.gatewaySectionTitle}>BLE Gateway Mode</Text>
-          <Switch
-            value={gatewayEnabled}
-            onValueChange={setGatewayEnabled}
-            trackColor={{false: '#767577', true: '#34C759'}}
-          />
+          <Text style={styles.gatewaySectionTitle}>MQTT Gateway</Text>
         </View>
 
-        {gatewayEnabled && (
-          <>
+            {/* Status Bar */}
             <View style={styles.gatewayStatusBar}>
-              {lastGatewayPost ? (
-                <View>
-                  <Text style={styles.gatewayStatusText}>
-                    ✓ Last posted: {lastGatewayPost.toLocaleTimeString()}
-                  </Text>
-                  {nextPostIn !== null && (
-                    <Text style={styles.gatewayNextText}>
-                      Next in {nextPostIn}s
-                    </Text>
-                  )}
-                </View>
-              ) : (
-                <Text style={styles.gatewayWaitingText}>
-                  {nextPostIn !== null ? `Sending in ${nextPostIn}s...` : 'Initializing...'}
+              <Text style={[styles.mqttStatusText, mqttConnected ? styles.mqttConnected : styles.mqttDisconnected]}>
+                {mqttConnected ? `✓ ${mqttBroker || 'Connected'}` : (mqttConfig ? '○ Connecting...' : '○ Not configured')}
+              </Text>
+              {lastGatewayPost && nextPostIn !== null && (
+                <Text style={styles.gatewayNextText}>
+                  Next: {nextPostIn}s
                 </Text>
               )}
               {gatewayError && (
@@ -741,14 +1460,21 @@ const BLEScannerScreen = () => {
               )}
             </View>
 
-            <TextInput
-              style={styles.gatewayInput}
-              value={gatewayUrl}
-              onChangeText={setGatewayUrl}
-              placeholder="REST Endpoint URL"
-              placeholderTextColor="#999"
-              autoCapitalize="none"
-            />
+            {/* Configuration */}
+            <View style={styles.configRow}>
+              {mqttConfig ? (
+                <Text style={styles.configText} numberOfLines={1} ellipsizeMode="middle">
+                  {mqttTopic}
+                </Text>
+              ) : (
+                <Text style={styles.configPlaceholder}>Not configured</Text>
+              )}
+              <TouchableOpacity
+                style={styles.qrButtonCompact}
+                onPress={requestCameraPermission}>
+                <Text style={styles.qrButtonCompactText}>📷</Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.intervalRow}>
               <Text style={styles.intervalLabel}>Interval:</Text>
@@ -757,14 +1483,14 @@ const BLEScannerScreen = () => {
                 value={gatewayInterval}
                 onChangeText={setGatewayInterval}
                 keyboardType="numeric"
-                placeholder="10"
                 placeholderTextColor="#999"
               />
-              <Text style={styles.intervalLabel}>seconds</Text>
+              <Text style={styles.intervalLabel}>sec</Text>
             </View>
-          </>
-        )}
       </View>
+          </ScrollView>
+        </View>
+      )}
 
       <ScrollView
         style={styles.deviceList}
@@ -778,20 +1504,27 @@ const BLEScannerScreen = () => {
         }>
         {filteredDevices.map(device => (
           <View key={device.id} style={styles.deviceCard}>
-            <TouchableOpacity
-              style={styles.deviceMainInfo}
-              onPress={() => connectToDevice(device.id)}>
+            <View style={styles.deviceMainInfo}>
               <View style={styles.deviceRow}>
                 <Text style={styles.deviceName}>
                   {device.name || 'Unknown Device'}
                 </Text>
-                <Text style={[
-                  styles.rssi,
-                  device.rssi > -70 ? styles.rssiGood :
-                  device.rssi > -85 ? styles.rssiMedium : styles.rssiBad
-                ]}>
-                  {device.rssi}
-                </Text>
+                <View style={styles.deviceHeaderRight}>
+                  <TouchableOpacity
+                    style={styles.favoriteButton}
+                    onPress={() => toggleFavorite(device.id)}>
+                    <Text style={styles.favoriteIcon}>
+                      {favoriteDevices.has(device.id) ? '★' : '☆'}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={[
+                    styles.rssi,
+                    device.rssi > -70 ? styles.rssiGood :
+                    device.rssi > -85 ? styles.rssiMedium : styles.rssiBad
+                  ]}>
+                    {device.rssi}
+                  </Text>
+                </View>
               </View>
               <View style={styles.deviceInfoRow}>
                 <Text style={styles.deviceInfoLabel}>Address: </Text>
@@ -803,7 +1536,17 @@ const BLEScannerScreen = () => {
                   {device.lastSeen.toLocaleTimeString()}
                 </Text>
               </View>
-            </TouchableOpacity>
+              {device.advertisingInterval && (
+                <View style={styles.deviceInfoRow}>
+                  <Text style={styles.deviceInfoLabel}>Interval: </Text>
+                  <Text style={styles.intervalText}>
+                    {device.advertisingInterval < 1000
+                      ? `${Math.round(device.advertisingInterval)} ms`
+                      : `${(device.advertisingInterval / 1000).toFixed(2)} s`}
+                  </Text>
+                </View>
+              )}
+            </View>
 
             <View style={styles.advertisingDataSection}>
               {renderDeviceAdvertising(device)}
@@ -818,6 +1561,93 @@ const BLEScannerScreen = () => {
           </Text>
         )}
       </ScrollView>
+
+      {/* QR Code Scanner Modal */}
+      {showQRScanner && (
+        <View style={styles.qrModal}>
+          <View style={styles.qrTopContent}>
+            <Text style={styles.qrTitle}>Scan MQTT Config QR Code</Text>
+            <Text style={styles.qrSubtitle}>Position the QR code in the center</Text>
+          </View>
+
+          <View style={styles.qrCameraContainer}>
+            <Camera
+              style={styles.qrCamera}
+              cameraType="back"
+              scanBarcode={true}
+              onReadCode={handleQRCodeScan}
+              showFrame={true}
+              laserColor="#34C759"
+              frameColor="#FFFFFF"
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.qrCancelButton}
+            onPress={() => setShowQRScanner(false)}>
+            <Text style={styles.qrCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Floating Action Button with Menu */}
+      {showFABMenu && (
+        <>
+          {/* Backdrop */}
+          <TouchableOpacity
+            style={styles.fabBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowFABMenu(false)}
+          />
+          {/* Menu Items */}
+          <View style={styles.fabMenuContainer}>
+            <TouchableOpacity
+              style={styles.fabMenuItem}
+              onPress={() => {
+                isScanning ? stopScan() : startScan();
+                setShowFABMenu(false);
+              }}>
+              <Text style={styles.fabMenuIcon}>{isScanning ? '⏸' : '▶'}</Text>
+              <Text style={styles.fabMenuText}>{isScanning ? 'Stop Scan' : 'Start Scan'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.fabMenuItem}
+              onPress={() => {
+                clearList();
+                setShowFABMenu(false);
+              }}>
+              <Text style={styles.fabMenuIcon}>🗑</Text>
+              <Text style={styles.fabMenuText}>Clear List</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.fabMenuItem}
+              onPress={() => {
+                setShowFABMenu(false);
+                setShowMQTTSection(!showMQTTSection);
+              }}>
+              <Text style={styles.fabMenuIcon}>📡</Text>
+              <Text style={styles.fabMenuText}>MQTT Gateway</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.fabMenuItem}
+              onPress={() => {
+                setShowFABMenu(false);
+                setShowSortSection(!showSortSection);
+                setShowFilters(!showFilters);
+              }}>
+              <Text style={styles.fabMenuIcon}>🔧</Text>
+              <Text style={styles.fabMenuText}>Filters & Sort</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {/* FAB */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setShowFABMenu(!showFABMenu)}>
+        <Text style={styles.fabIcon}>{showFABMenu ? '✕' : '+'}</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -827,6 +1657,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F2F2F7',
   },
+  settingsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#F2F2F7',
+    zIndex: 1000,
+  },
+  settingsContent: {
+    flex: 1,
+  },
+  closeSettingsButton: {
+    backgroundColor: '#007AFF',
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeSettingsText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   header: {
     backgroundColor: '#007AFF',
     padding: 16,
@@ -835,9 +1688,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
     color: 'white',
+  },
+  headerCount: {
+    fontSize: 13,
+    color: 'white',
+    opacity: 0.9,
   },
   statusText: {
     fontSize: 14,
@@ -845,7 +1703,8 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   controls: {
-    padding: 12,
+    padding: 8,
+    paddingBottom: 4,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -872,12 +1731,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  filters: {
+  filtersScrollView: {
+    flex: 1,
     backgroundColor: 'white',
-    padding: 12,
-    marginHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+  },
+  filters: {
+    padding: 16,
   },
   filterRow: {
     flexDirection: 'row',
@@ -892,28 +1751,315 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#000',
   },
+  switchRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    marginBottom: 8,
+  },
   switchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 12,
+    flex: 1,
   },
   switchLabel: {
     fontSize: 14,
     color: '#000',
     marginRight: 8,
+    flex: 1,
+  },
+  sortSection: {
+    backgroundColor: 'white',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 0,
+    borderRadius: 0,
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+  },
+  sortLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 8,
+  },
+  sortScroll: {
+    flexDirection: 'row',
+  },
+  sortButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginRight: 8,
+    borderRadius: 16,
+    backgroundColor: '#F2F2F7',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  sortButtonActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  sortButtonText: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
+  },
+  sortButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  filterHeader: {
+    backgroundColor: 'white',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 0,
+    borderRadius: 0,
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  filterHeaderText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
+  },
+  clearFiltersButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+  },
+  clearFiltersText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '600',
+  },
+  filterChipsContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginBottom: 2,
+    maxHeight: 40,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007AFF',
+    paddingVertical: 4,
+    paddingLeft: 10,
+    paddingRight: 6,
+    borderRadius: 12,
+    marginRight: 6,
+    height: 28,
+  },
+  filterChipText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '500',
+    marginRight: 4,
+  },
+  filterChipClose: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterChipCloseText: {
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  filterChipAdvanced: {
+    backgroundColor: '#FF9500',
+  },
+  rssiSliderContainer: {
+    marginBottom: 4,
+  },
+  rssiLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 2,
+  },
+  rssiSlider: {
+    width: '100%',
+    height: 25,
+  },
+  presetsSection: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+  },
+  presetsLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 6,
+  },
+  presetsScroll: {
+    flexDirection: 'row',
+  },
+  presetButton: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginRight: 6,
+    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    minWidth: 60,
+  },
+  presetIcon: {
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  presetName: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  advancedToggle: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+  },
+  advancedToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FF9500',
+  },
+  advancedFiltersSection: {
+    marginTop: 4,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5EA',
+  },
+  advancedFilterGroup: {
+    marginBottom: 8,
+  },
+  advancedFilterLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 2,
+  },
+  advancedFilterHint: {
+    fontSize: 10,
+    color: '#8E8E93',
+    marginBottom: 3,
+  },
+  advancedFilterInput: {
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    borderRadius: 6,
+    padding: 4,
+    fontSize: 12,
+    color: '#000',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  byteFilterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  addByteFilterButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#34C759',
+    borderRadius: 12,
+  },
+  addByteFilterText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '600',
+  },
+  byteFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    padding: 8,
+    borderRadius: 6,
+    marginTop: 6,
+  },
+  byteFilterIndex: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    width: 30,
+  },
+  byteFilterInputs: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  byteFilterInput: {
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    borderRadius: 4,
+    padding: 6,
+    fontSize: 13,
+    color: '#000',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    backgroundColor: 'white',
+  },
+  byteFilterPosition: {
+    width: 50,
+    textAlign: 'center',
+  },
+  byteFilterValue: {
+    flex: 1,
+  },
+  byteFilterEqual: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginHorizontal: 6,
+  },
+  removeByteFilterButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  removeByteFilterText: {
+    fontSize: 18,
+    color: 'white',
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  noByteFiltersText: {
+    fontSize: 12,
+    color: '#8E8E93',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
   },
   gatewaySection: {
     backgroundColor: 'white',
-    padding: 12,
-    marginHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+    padding: 16,
+    marginHorizontal: 0,
+    borderRadius: 0,
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
   },
   gatewaySectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   gatewaySectionTitle: {
     fontSize: 15,
@@ -931,65 +2077,87 @@ const styles = StyleSheet.create({
   },
   gatewayStatusBar: {
     backgroundColor: '#F2F2F7',
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 8,
-    minHeight: 36,
-    justifyContent: 'center',
-  },
-  gatewayStatusText: {
-    fontSize: 12,
-    color: '#34C759',
-    fontWeight: '600',
-  },
-  gatewayWaitingText: {
-    fontSize: 12,
-    color: '#8E8E93',
-    fontWeight: '500',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    marginBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   gatewayNextText: {
     fontSize: 11,
     color: '#8E8E93',
-    marginTop: 2,
+    fontWeight: '500',
   },
   gatewayErrorText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#FF3B30',
     fontWeight: '600',
-    marginTop: 4,
+  },
+  mqttStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
+  },
+  mqttConnected: {
+    color: '#34C759',
+  },
+  mqttDisconnected: {
+    color: '#FF9500',
+  },
+  configRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  configPlaceholder: {
+    flex: 1,
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  qrButtonCompact: {
+    backgroundColor: '#34C759',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  qrButtonCompactText: {
+    fontSize: 18,
   },
   intervalRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   intervalLabel: {
-    fontSize: 14,
-    color: '#000',
+    fontSize: 12,
+    color: '#666',
     fontWeight: '500',
   },
   intervalInput: {
     borderWidth: 1,
     borderColor: '#E5E5EA',
     borderRadius: 6,
-    padding: 8,
-    fontSize: 14,
+    padding: 6,
+    fontSize: 13,
     color: '#000',
-    marginHorizontal: 8,
-    width: 60,
+    marginHorizontal: 6,
+    width: 50,
     textAlign: 'center',
   },
   deviceList: {
     flex: 1,
-    padding: 12,
+    padding: 8,
   },
   deviceCard: {
     backgroundColor: 'white',
-    borderRadius: 8,
-    marginBottom: 8,
+    borderRadius: 6,
+    marginBottom: 6,
     overflow: 'hidden',
   },
   deviceMainInfo: {
-    padding: 12,
+    padding: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F2F2F7',
   },
@@ -1004,6 +2172,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#000',
     flex: 1,
+  },
+  deviceHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  favoriteButton: {
+    padding: 4,
+  },
+  favoriteIcon: {
+    fontSize: 20,
+    color: '#FFD700',
   },
   deviceInfoRow: {
     flexDirection: 'row',
@@ -1043,6 +2222,13 @@ const styles = StyleSheet.create({
   timestamp: {
     fontSize: 11,
     color: '#8E8E93',
+    flex: 1,
+  },
+  intervalText: {
+    fontSize: 11,
+    color: '#007AFF',
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     flex: 1,
   },
   advertisingDataSection: {
@@ -1103,6 +2289,123 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontSize: 14,
     marginTop: 40,
+  },
+  qrModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000',
+    zIndex: 1000,
+    flexDirection: 'column',
+  },
+  qrCameraContainer: {
+    flex: 1,
+    padding: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrCamera: {
+    width: '100%',
+    height: '100%',
+  },
+  qrTopContent: {
+    padding: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    alignItems: 'center',
+  },
+  qrTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFF',
+    marginBottom: 8,
+  },
+  qrSubtitle: {
+    fontSize: 14,
+    color: '#CCC',
+  },
+  qrCancelButton: {
+    backgroundColor: '#FF3B30',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    margin: 20,
+  },
+  qrCancelText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  configText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#3C3C43',
+    fontFamily: 'monospace',
+  },
+  // FAB Styles
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 80,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    zIndex: 999,
+  },
+  fabIcon: {
+    fontSize: 28,
+    color: 'white',
+    fontWeight: '300',
+  },
+  fabBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 998,
+  },
+  fabMenuContainer: {
+    position: 'absolute',
+    right: 20,
+    bottom: 150,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    overflow: 'hidden',
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    zIndex: 999,
+  },
+  fabMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F2F7',
+    minWidth: 180,
+  },
+  fabMenuIcon: {
+    fontSize: 24,
+    marginRight: 16,
+  },
+  fabMenuText: {
+    fontSize: 16,
+    color: '#000',
+    fontWeight: '500',
   },
 });
 

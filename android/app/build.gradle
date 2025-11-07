@@ -84,6 +84,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        manifestPlaceholders = [usesCleartextTraffic: "true"]
+        missingDimensionStrategy 'react-native-camera', 'general'
     }
     signingConfigs {
         debug {

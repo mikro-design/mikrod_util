@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import NfcManager, { NfcTech, Ndef, NfcEvents } from 'react-native-nfc-manager';
 import { NFCData } from '../types';
+import { logger } from '../utils/logger';
 
 export const useNFC = () => {
   const [isNFCEnabled, setIsNFCEnabled] = useState(false);
@@ -23,15 +24,19 @@ export const useNFC = () => {
 
           if (!enabled) {
             setError('NFC is supported but disabled. Please enable NFC in settings.');
+            logger.warning('NFC', 'NFC supported but disabled');
+          } else {
+            logger.success('NFC', 'NFC initialized successfully');
           }
         } else {
           setError('This device does not support NFC');
           Alert.alert('NFC Not Supported', 'This device does not support NFC');
+          logger.error('NFC', 'NFC not supported on this device');
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to initialize NFC';
         setError(errorMessage);
-        console.error('NFC init error:', err);
+        logger.error('NFC', 'NFC initialization failed', { error: errorMessage });
       }
     };
 
@@ -47,16 +52,19 @@ export const useNFC = () => {
     if (isScanning) return;
     if (!isNFCSupported) {
       Alert.alert('Error', 'NFC is not supported on this device');
+      logger.error('NFC', 'Scan failed: NFC not supported');
       return;
     }
     if (!isNFCEnabled) {
       Alert.alert('Error', 'Please enable NFC in your device settings');
+      logger.error('NFC', 'Scan failed: NFC not enabled');
       return;
     }
 
     try {
       setIsScanning(true);
       setError(null);
+      logger.info('NFC', 'NFC scan started');
 
       const techs = [NfcTech.NfcV, NfcTech.Ndef, NfcTech.NfcA];
 
@@ -67,7 +75,7 @@ export const useNFC = () => {
           const tag = await NfcManager.getTag();
 
           if (tag) {
-            console.log('Found tag with tech:', tech, tag);
+            logger.success('NFC', `Tag discovered with ${tech}`, { tagId: tag.id, tech });
             const newTag: NFCData = {
               id: tag.id || 'Unknown',
               type: tag.type || 'Unknown',
@@ -85,6 +93,7 @@ export const useNFC = () => {
             });
 
             Alert.alert('NFC Tag Read', `Tag ID: ${newTag.id}\nTech: ${newTag.techTypes.join(', ')}`);
+            logger.info('NFC', 'Tag added to history', { tagId: newTag.id });
             setIsScanning(false);
             return;
           }
@@ -127,7 +136,7 @@ export const useNFC = () => {
 
     } catch (err: any) {
       const errorMessage = err?.message || 'Failed to scan for NFC tags';
-      console.warn('NFC scan error:', err);
+      logger.error('NFC', 'Scan error', { error: errorMessage });
       setError(errorMessage);
       Alert.alert('Scan Error', errorMessage);
       setIsScanning(false);
@@ -141,8 +150,9 @@ export const useNFC = () => {
       NfcManager.setEventListener(NfcEvents.DiscoverTag, null);
       await NfcManager.unregisterTagEvent();
       await NfcManager.cancelTechnologyRequest();
+      logger.info('NFC', 'NFC scan stopped');
     } catch (err) {
-      console.error('Stop scan error:', err);
+      logger.error('NFC', 'Error stopping scan', { error: err });
     }
   }, []);
 
