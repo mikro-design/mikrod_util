@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Text } from 'react-native';
+import { Text, StatusBar } from 'react-native';
 import NFCReaderScreen from './src/screens/NFCReaderScreen';
 import BLEScannerScreen from './src/screens/BLEScannerScreen';
 import NFCTagDetailScreen from './src/screens/NFCTagDetailScreen';
@@ -11,6 +11,17 @@ import { LogsScreen } from './src/screens/LogsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
+type RootStackParamList = {
+  NFCReader: undefined;
+  NFCTagDetail: {
+    tagId: string;
+    tagType: string;
+    techTypes: string[];
+  };
+};
+
+type NFCStackParamList = RootStackParamList;
 
 function NFCStack() {
   return (
@@ -28,6 +39,7 @@ function NFCStack() {
         options={{
           headerTitle: 'Tag Memory Editor',
         }}
+        initialParams={{ tagId: '', tagType: '', techTypes: [] }}
       />
     </Stack.Navigator>
   );
@@ -36,13 +48,19 @@ function NFCStack() {
 function App() {
   return (
     <SafeAreaProvider>
+      <StatusBar
+        barStyle="dark-content"
+        translucent={true}
+        backgroundColor="transparent"
+      />
       <NavigationContainer>
         <Tab.Navigator
           screenOptions={{
             tabBarActiveTintColor: '#007AFF',
             tabBarInactiveTintColor: '#8E8E93',
             headerShown: false,
-          }}>
+          }}
+        >
           <Tab.Screen
             name="NFC"
             component={NFCStack}

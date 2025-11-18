@@ -7,25 +7,36 @@ import {
   TouchableOpacity,
   Share,
   ScrollView,
+  TextInput,
+  Modal,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { logger, LogEntry, LogLevel } from '../utils/logger';
 
 export const LogsScreen = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [filterLevel, setFilterLevel] = useState<'ALL' | LogLevel | 'ERRORS_ONLY'>('ALL');
-  const [filterCategory, setFilterCategory] = useState<'ALL' | 'NFC' | 'BLE' | 'SYSTEM'>('ALL');
+  const [filterLevel, setFilterLevel] = useState<
+    'ALL' | LogLevel | 'ERRORS_ONLY'
+  >('ALL');
+  const [filterCategory, setFilterCategory] = useState<
+    'ALL' | 'NFC' | 'BLE' | 'SYSTEM'
+  >('ALL');
   const [showDebug, setShowDebug] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const [phoneIp, setPhoneIp] = useState<string>('...');
+  const [showStats, setShowStats] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     // Subscribe to new logs
-    const unsubscribe = logger.subscribe((log) => {
+    const unsubscribe = logger.subscribe(log => {
       setLogs(prevLogs => [...prevLogs, log]);
       if (autoScroll) {
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: true }),
+          100,
+        );
       }
     });
 
@@ -38,13 +49,18 @@ export const LogsScreen = () => {
   useEffect(() => {
     // Fetch phone IP
     NetInfo.fetch().then(state => {
-      const ip = state.details?.ipAddress || 'Unknown';
+      const ip = (state.details as any)?.ipAddress || 'Unknown';
       setPhoneIp(ip);
     });
   }, []);
 
   const getFilteredLogs = () => {
     let filtered = logs;
+
+    // Search filter
+    if (searchQuery) {
+      filtered = logger.searchLogs(searchQuery);
+    }
 
     // Filter by category
     if (filterCategory !== 'ALL') {
@@ -53,7 +69,9 @@ export const LogsScreen = () => {
 
     // Filter by level
     if (filterLevel === 'ERRORS_ONLY') {
-      filtered = filtered.filter(log => log.level === LogLevel.ERROR || log.level === LogLevel.WARNING);
+      filtered = filtered.filter(
+        log => log.level === LogLevel.ERROR || log.level === LogLevel.WARNING,
+      );
     } else if (filterLevel !== 'ALL') {
       filtered = filtered.filter(log => log.level === filterLevel);
     }
@@ -71,12 +89,12 @@ export const LogsScreen = () => {
     setLogs([]);
   };
 
-  const handleShareLogs = async () => {
+  const handleShareLogs = async (format: 'json' | 'csv' | 'txt' = 'txt') => {
     try {
-      const logsText = logger.exportLogs();
+      const logsText = logger.exportLogs(format);
       await Share.share({
         message: logsText,
-        title: 'Mikrod Util Logs',
+        title: `Mikrod Util Logs (${format.toUpperCase()})`,
       });
     } catch (error) {
       console.error('Error sharing logs:', error);
@@ -117,7 +135,8 @@ export const LogsScreen = () => {
     }
   };
 
-  const formatTime = (date: Date): string => {
+  const formatTime = (timestamp: string): string => {
+    const date = new Date(timestamp);
     const hours = date.getHours().toString().padStart(2, '0');
     const minutes = date.getMinutes().toString().padStart(2, '0');
     const seconds = date.getSeconds().toString().padStart(2, '0');
@@ -130,13 +149,15 @@ export const LogsScreen = () => {
       <View style={styles.logHeader}>
         <Text style={styles.logTime}>{formatTime(item.timestamp)}</Text>
         <Text style={[styles.logLevel, { color: getLevelColor(item.level) }]}>
-          {getLevelIcon(item.level)} {item.level}
+          {getLevelIcon(item.level)} {item.levelName}
         </Text>
         <Text style={styles.logCategory}>[{item.category}]</Text>
       </View>
       <Text style={styles.logMessage}>{item.message}</Text>
       {item.details && (
-        <Text style={styles.logDetails}>{JSON.stringify(item.details, null, 2)}</Text>
+        <Text style={styles.logDetails}>
+          {JSON.stringify(item.details, null, 2)}
+        </Text>
       )}
     </View>
   );
@@ -145,53 +166,132 @@ export const LogsScreen = () => {
 
   return (
     <View style={styles.container}>
+      {/* Search Bar */}
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search logs..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholderTextColor="#999"
+        />
+        <TouchableOpacity
+          style={[styles.actionButton, showStats && styles.actionButtonActive]}
+          onPress={() => setShowStats(!showStats)}
+        >
+          <Text style={styles.actionButtonText}>📊</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Filter Bar */}
       <View style={styles.filterBar}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+        >
           <TouchableOpacity
-            style={[styles.filterButton, filterCategory === 'ALL' && styles.filterButtonActive]}
-            onPress={() => setFilterCategory('ALL')}>
-            <Text style={[styles.filterButtonText, filterCategory === 'ALL' && styles.filterButtonTextActive]}>
+            style={[
+              styles.filterButton,
+              filterCategory === 'ALL' && styles.filterButtonActive,
+            ]}
+            onPress={() => setFilterCategory('ALL')}
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                filterCategory === 'ALL' && styles.filterButtonTextActive,
+              ]}
+            >
               All
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.filterButton, filterCategory === 'NFC' && styles.filterButtonActive]}
-            onPress={() => setFilterCategory('NFC')}>
-            <Text style={[styles.filterButtonText, filterCategory === 'NFC' && styles.filterButtonTextActive]}>
+            style={[
+              styles.filterButton,
+              filterCategory === 'NFC' && styles.filterButtonActive,
+            ]}
+            onPress={() => setFilterCategory('NFC')}
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                filterCategory === 'NFC' && styles.filterButtonTextActive,
+              ]}
+            >
               NFC
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.filterButton, filterCategory === 'BLE' && styles.filterButtonActive]}
-            onPress={() => setFilterCategory('BLE')}>
-            <Text style={[styles.filterButtonText, filterCategory === 'BLE' && styles.filterButtonTextActive]}>
+            style={[
+              styles.filterButton,
+              filterCategory === 'BLE' && styles.filterButtonActive,
+            ]}
+            onPress={() => setFilterCategory('BLE')}
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                filterCategory === 'BLE' && styles.filterButtonTextActive,
+              ]}
+            >
               BLE
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.filterButton, filterCategory === 'SYSTEM' && styles.filterButtonActive]}
-            onPress={() => setFilterCategory('SYSTEM')}>
-            <Text style={[styles.filterButtonText, filterCategory === 'SYSTEM' && styles.filterButtonTextActive]}>
+            style={[
+              styles.filterButton,
+              filterCategory === 'SYSTEM' && styles.filterButtonActive,
+            ]}
+            onPress={() => setFilterCategory('SYSTEM')}
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                filterCategory === 'SYSTEM' && styles.filterButtonTextActive,
+              ]}
+            >
               System
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.filterButton, filterLevel === 'ERRORS_ONLY' && styles.filterButtonActive]}
-            onPress={() => setFilterLevel(filterLevel === 'ERRORS_ONLY' ? 'ALL' : 'ERRORS_ONLY')}>
-            <Text style={[styles.filterButtonText, filterLevel === 'ERRORS_ONLY' && styles.filterButtonTextActive]}>
+            style={[
+              styles.filterButton,
+              filterLevel === 'ERRORS_ONLY' && styles.filterButtonActive,
+            ]}
+            onPress={() =>
+              setFilterLevel(
+                filterLevel === 'ERRORS_ONLY' ? 'ALL' : 'ERRORS_ONLY',
+              )
+            }
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                filterLevel === 'ERRORS_ONLY' && styles.filterButtonTextActive,
+              ]}
+            >
               🔴 Errors Only
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.filterButton, showDebug && styles.filterButtonActive]}
-            onPress={() => setShowDebug(!showDebug)}>
-            <Text style={[styles.filterButtonText, showDebug && styles.filterButtonTextActive]}>
+            style={[
+              styles.filterButton,
+              showDebug && styles.filterButtonActive,
+            ]}
+            onPress={() => setShowDebug(!showDebug)}
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                showDebug && styles.filterButtonTextActive,
+              ]}
+            >
               ⚪ Debug
             </Text>
           </TouchableOpacity>
@@ -200,24 +300,54 @@ export const LogsScreen = () => {
 
       {/* Action Bar */}
       <View style={styles.actionBar}>
-        <Text style={styles.phoneIpText}>
-          IP: {phoneIp}
-        </Text>
+        <Text style={styles.phoneIpText}>IP: {phoneIp}</Text>
 
         <TouchableOpacity
           style={[styles.actionButton, autoScroll && styles.actionButtonActive]}
-          onPress={() => setAutoScroll(!autoScroll)}>
+          onPress={() => setAutoScroll(!autoScroll)}
+        >
           <Text style={styles.actionButtonText}>
             {autoScroll ? '📌' : '📌'}
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton} onPress={handleShareLogs}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleShareLogs('txt')}
+        >
           <Text style={styles.actionButtonText}>📤</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionButton} onPress={handleClearLogs}>
           <Text style={styles.actionButtonText}>🗑️</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => {
+            // Test enhanced logging features
+            logger.info(
+              'TEST',
+              'Enhanced logging test started',
+              { timestamp: Date.now() },
+              ['test', 'demo'],
+            );
+
+            const timerId = logger.startPerformanceTimer('test-operation', {
+              type: 'demo',
+            });
+            setTimeout(() => {
+              logger.endPerformanceTimer(timerId, { result: 'success' });
+              logger.success(
+                'TEST',
+                'Enhanced logging test completed',
+                { features: ['persistence', 'search', 'stats', 'performance'] },
+                ['demo'],
+              );
+            }, 1000);
+          }}
+        >
+          <Text style={styles.actionButtonText}>🧪</Text>
         </TouchableOpacity>
 
         <Text style={styles.logCount}>
@@ -246,6 +376,65 @@ export const LogsScreen = () => {
           windowSize={10}
         />
       )}
+
+      {/* Stats Modal */}
+      <Modal
+        visible={showStats}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowStats(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Log Statistics</Text>
+            <TouchableOpacity onPress={() => setShowStats(false)}>
+              <Text style={styles.modalClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            {(() => {
+              const stats = logger.getLogStats();
+              return (
+                <>
+                  <View style={styles.statSection}>
+                    <Text style={styles.statTitle}>Overview</Text>
+                    <Text style={styles.statItem}>
+                      Total Logs: {stats.total}
+                    </Text>
+                    <Text style={styles.statItem}>
+                      Error Rate: {stats.errorRate.toFixed(1)}%
+                    </Text>
+                    <Text style={styles.statItem}>
+                      Avg Performance: {stats.averagePerformance.toFixed(0)}ms
+                    </Text>
+                  </View>
+
+                  <View style={styles.statSection}>
+                    <Text style={styles.statTitle}>By Level</Text>
+                    {Object.entries(stats.byLevel).map(([level, count]) => (
+                      <Text key={level} style={styles.statItem}>
+                        {level}: {count}
+                      </Text>
+                    ))}
+                  </View>
+
+                  <View style={styles.statSection}>
+                    <Text style={styles.statTitle}>By Category</Text>
+                    {Object.entries(stats.byCategory).map(
+                      ([category, count]) => (
+                        <Text key={category} style={styles.statItem}>
+                          {category}: {count}
+                        </Text>
+                      ),
+                    )}
+                  </View>
+                </>
+              );
+            })()}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -254,6 +443,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  searchBar: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    height: 36,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    fontSize: 14,
+    marginRight: 8,
   },
   filterBar: {
     backgroundColor: '#fff',
@@ -382,5 +589,49 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#bbb',
     textAlign: 'center',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  modalClose: {
+    fontSize: 24,
+    color: '#666',
+    padding: 4,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 16,
+  },
+  statSection: {
+    backgroundColor: '#fff',
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 8,
+  },
+  statTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  statItem: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
   },
 });
